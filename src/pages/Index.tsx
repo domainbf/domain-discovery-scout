@@ -5,7 +5,7 @@ import WhoisResults from '@/components/WhoisResults';
 import { queryWhois, WhoisResult } from '@/api/whoisService';
 import { toast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, InfoIcon } from 'lucide-react';
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -56,10 +56,10 @@ const Index = () => {
         </header>
 
         <Alert className="mb-6 max-w-3xl mx-auto">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>浏览器环境限制</AlertTitle>
+          <InfoIcon className="h-4 w-4" />
+          <AlertTitle>关于本服务</AlertTitle>
           <AlertDescription>
-            由于浏览器安全限制，无法直接建立Socket连接到WHOIS服务器。要实现完整功能，您需要创建一个后端服务来处理Socket连接。目前显示的是模拟数据。
+            本系统使用后端服务器通过Socket连接到WHOIS服务器获取真实数据。支持多种顶级域名，包括.com、.net、.org、.cn等。
           </AlertDescription>
         </Alert>
 
@@ -68,8 +68,8 @@ const Index = () => {
         {whoisData && <WhoisResults data={whoisData} domain={searchedDomain} />}
         
         <footer className="mt-16 text-center text-gray-500 text-sm">
-          <p>域名查询系统 • 支持 .com .net .org .cn .io 等顶级域名</p>
-          <p className="mt-1">注：完整实现需要后端服务来处理Socket连接</p>
+          <p>域名查询系统 • 支持 .com .net .org .cn .io 等多种顶级域名</p>
+          <p className="mt-1">© {new Date().getFullYear()} WHOIS查询服务</p>
         </footer>
       </div>
     </div>
