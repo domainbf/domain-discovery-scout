@@ -3,7 +3,7 @@ import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { WhoisResult } from '@/api/whoisService';
-import { AlertCircle, Globe, Calendar, Shield, Server, User, RefreshCcw } from "lucide-react";
+import { AlertCircle, Globe, Calendar, Shield, Server, User, RefreshCcw, FileText } from "lucide-react";
 
 interface WhoisResultsProps {
   data: WhoisResult | null;
@@ -21,6 +21,16 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
           <h3 className="text-xl font-semibold">查询错误</h3>
         </div>
         <p className="text-red-700">{data.error}</p>
+        
+        {data.rawData && (
+          <div className="mt-4">
+            <Separator className="my-4" />
+            <h4 className="text-lg font-medium mb-2 text-red-700">服务器响应信息:</h4>
+            <pre className="bg-white p-4 rounded-md text-sm overflow-auto max-h-96 text-gray-700 whitespace-pre-wrap">
+              {data.rawData}
+            </pre>
+          </div>
+        )}
       </Card>
     );
   }
@@ -124,8 +134,31 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
         </div>
       </div>
       
+      {data.rawData && (
+        <div className="mt-6">
+          <Separator className="my-4" />
+          
+          <details className="group">
+            <summary className="flex items-center cursor-pointer text-blue-600 font-medium">
+              <FileText className="h-4 w-4 mr-1" />
+              查看原始WHOIS数据
+              <svg className="ml-2 h-5 w-5 group-open:rotate-180 transition-transform" 
+                   xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </summary>
+            <div className="mt-3 overflow-hidden">
+              <pre className="bg-gray-100 p-4 rounded-md text-sm overflow-auto max-h-96 text-gray-700 whitespace-pre-wrap">
+                {data.rawData}
+              </pre>
+            </div>
+          </details>
+        </div>
+      )}
+      
       <div className="mt-6 text-sm text-gray-500 italic">
-        注意: 此信息来自公共WHOIS API服务，可能会有延迟或不完整。
+        <p>注意: 在浏览器环境中无法直接使用Socket连接到WHOIS服务器。</p>
+        <p>要实现完整功能，您需要创建一个后端服务来处理Socket连接。</p>
       </div>
     </Card>
   );
