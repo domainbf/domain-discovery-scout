@@ -1,6 +1,5 @@
 
-// This file simulates the WHOIS API service
-// In a real implementation, this would be a backend server endpoint
+// This file implements a real WHOIS API service using public WHOIS API
 
 export interface WhoisResult {
   registrar?: string;
@@ -8,73 +7,29 @@ export interface WhoisResult {
   expiryDate?: string;
   status?: string;
   error?: string;
+  nameServers?: string[];
+  registrant?: string;
+  admin?: string;
+  tech?: string;
+  lastUpdated?: string;
 }
 
-const whoisServers: Record<string, string> = {
-  "com": "whois.verisign-grs.com",
-  "net": "whois.verisign-grs.com",
-  "org": "whois.pir.org",
-  "cn": "whois.cnnic.cn",
-  "io": "whois.nic.io"
-};
+// 这是我们支持查询的顶级域名列表
+const supportedTLDs = [
+  "com", "net", "org", "cn", "io", 
+  "info", "biz", "mobi", "name", "co",
+  "tv", "me", "cc", "us", "de", "uk", 
+  "jp", "fr", "au", "ru", "ch", "es", 
+  "ca", "in", "nl", "it", "se", "no"
+];
 
-// Real domain data - more accurate than random generation
-const knownDomains: Record<string, WhoisResult> = {
-  "google.com": {
-    registrar: "MarkMonitor Inc.",
-    creationDate: "1997-09-15T04:00:00Z",
-    expiryDate: "2028-09-14T04:00:00Z",
-    status: "clientUpdateProhibited clientTransferProhibited clientDeleteProhibited serverDeleteProhibited serverTransferProhibited serverUpdateProhibited"
-  },
-  "microsoft.com": {
-    registrar: "MarkMonitor Inc.",
-    creationDate: "1991-05-02T04:00:00Z",
-    expiryDate: "2024-05-03T04:00:00Z",
-    status: "clientDeleteProhibited clientTransferProhibited clientUpdateProhibited"
-  },
-  "baidu.com": {
-    registrar: "MarkMonitor Inc.",
-    creationDate: "1999-10-11T04:00:00Z",
-    expiryDate: "2024-10-11T04:00:00Z",
-    status: "clientDeleteProhibited clientTransferProhibited clientUpdateProhibited"
-  },
-  "apple.com": {
-    registrar: "CSC Corporate Domains, Inc.",
-    creationDate: "1987-02-19T05:00:00Z",
-    expiryDate: "2024-02-20T05:00:00Z",
-    status: "clientTransferProhibited serverDeleteProhibited serverTransferProhibited serverUpdateProhibited"
-  },
-  "amazon.com": {
-    registrar: "MarkMonitor Inc.",
-    creationDate: "1994-11-01T05:00:00Z",
-    expiryDate: "2024-10-31T04:00:00Z",
-    status: "clientTransferProhibited clientUpdateProhibited clientDeleteProhibited"
-  },
-  "taobao.com": {
-    registrar: "Alibaba Cloud Computing Ltd. d/b/a HiChina",
-    creationDate: "1999-04-21T04:00:00Z",
-    expiryDate: "2024-04-21T04:00:00Z",
-    status: "clientTransferProhibited"
-  },
-  "tencent.com": {
-    registrar: "DNSPod, Inc.",
-    creationDate: "1998-11-11T05:00:00Z",
-    expiryDate: "2024-11-11T05:00:00Z",
-    status: "clientTransferProhibited"
-  },
-  "alibaba.com": {
-    registrar: "Alibaba Cloud Computing Ltd. d/b/a HiChina",
-    creationDate: "1999-05-04T04:00:00Z",
-    expiryDate: "2024-05-04T04:00:00Z",
-    status: "clientTransferProhibited"
-  }
-};
-
-// This is a frontend mock since we can't directly connect to WHOIS servers from the browser
-// In a real implementation, this would be a backend API call
+/**
+ * 查询域名的WHOIS信息
+ * 使用公共WHOIS API服务
+ */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
-    // Validate domain format
+    // 验证域名格式
     const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
     if (!domainRegex.test(domain)) {
       return { error: "无效的域名格式" };
@@ -82,52 +37,72 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
 
     const tld = domain.split('.').pop() || "";
     
-    if (!whoisServers[tld]) {
-      return { error: "不支持的顶级域名" };
+    if (!supportedTLDs.includes(tld)) {
+      return { error: `不支持的顶级域名: .${tld}` };
     }
     
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // 使用公共WHOIS API服务 - WHOIS API by APILayer
+    const apiUrl = `https://api.apilayer.com/whois/query?domain=${domain}`;
     
-    // Check if we have predefined data for this domain
-    const lowerDomain = domain.toLowerCase();
-    if (knownDomains[lowerDomain]) {
-      return knownDomains[lowerDomain];
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          // 注意：这是一个免费API密钥的示例，实际上可能需要用户注册获取自己的API密钥
+          // 或者使用其他免费的WHOIS API服务
+          'apikey': 'Cg98v7LL8e6RCjZJuOgkdoLJGKA3cWj9'
+        }
+      });
+
+      if (!response.ok) {
+        console.error("WHOIS API error:", response.statusText);
+        return { error: `API错误: ${response.status} ${response.statusText}` };
+      }
+
+      const data = await response.json();
+      
+      // 解析API响应数据
+      return {
+        registrar: data.result?.registrar || "未知",
+        creationDate: data.result?.created_date || "未知",
+        expiryDate: data.result?.expiry_date || "未知",
+        status: data.result?.domain_status || "未知",
+        nameServers: data.result?.name_servers || [],
+        registrant: data.result?.registrant || "未知",
+        admin: data.result?.admin || "未知",
+        tech: data.result?.tech || "未知",
+        lastUpdated: data.result?.updated_date || "未知"
+      };
+      
+    } catch (apiError) {
+      console.error("WHOIS API连接错误:", apiError);
+      
+      // 尝试备用API - whoisfreaks API (备用选项)
+      try {
+        const backupApiUrl = `https://api.whoisfreaks.com/v1.0/whois?apiKey=your_api_key_here&domainName=${domain}&type=live`;
+        const backupResponse = await fetch(backupApiUrl);
+        
+        if (!backupResponse.ok) {
+          throw new Error(`备用API错误: ${backupResponse.status}`);
+        }
+        
+        const backupData = await backupResponse.json();
+        
+        return {
+          registrar: backupData.registrar?.name || "未知",
+          creationDate: backupData.create_date || "未知",
+          expiryDate: backupData.expire_date || "未知",
+          status: Array.isArray(backupData.domain_status) ? backupData.domain_status.join(', ') : backupData.domain_status || "未知",
+          nameServers: backupData.name_servers || [],
+          lastUpdated: backupData.update_date || "未知"
+        };
+      } catch (backupError) {
+        console.error("备用WHOIS API错误:", backupError);
+        return { error: "无法连接到WHOIS API服务，请稍后再试" };
+      }
     }
-    
-    // For unknown domains, generate more reasonable data
-    // This simulates a real WHOIS response better than completely random dates
-    const currentYear = new Date().getFullYear();
-    const randomPastYear = currentYear - Math.floor(Math.random() * 20) - 1; // 1-20 years ago
-    const randomFutureYear = currentYear + Math.floor(Math.random() * 5) + 1; // 1-5 years in future
-    
-    const creationDate = new Date(randomPastYear, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
-    const expiryDate = new Date(randomFutureYear, creationDate.getMonth(), creationDate.getDate());
-    
-    const registrars = [
-      "GoDaddy.com, LLC",
-      "Namecheap, Inc.",
-      "NameSilo, LLC",
-      "Alibaba Cloud Computing Ltd. d/b/a HiChina",
-      "DNSPod, Inc.",
-      "Dynadot, LLC"
-    ];
-    
-    const statuses = [
-      "clientTransferProhibited",
-      "clientDeleteProhibited clientTransferProhibited",
-      "clientUpdateProhibited clientTransferProhibited",
-      "ok"
-    ];
-    
-    return {
-      registrar: registrars[Math.floor(Math.random() * registrars.length)],
-      creationDate: creationDate.toISOString(),
-      expiryDate: expiryDate.toISOString(),
-      status: statuses[Math.floor(Math.random() * statuses.length)]
-    };
   } catch (error) {
-    console.error("WHOIS query error:", error);
+    console.error("WHOIS查询错误:", error);
     return { error: `查询出错: ${error instanceof Error ? error.message : String(error)}` };
   }
 }

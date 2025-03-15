@@ -3,7 +3,7 @@ import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { WhoisResult } from '@/api/whoisService';
-import { AlertCircle, Globe, Calendar, Shield } from "lucide-react";
+import { AlertCircle, Globe, Calendar, Shield, Server, User, RefreshCcw } from "lucide-react";
 
 interface WhoisResultsProps {
   data: WhoisResult | null;
@@ -26,7 +26,7 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
   }
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return "未知";
+    if (!dateString || dateString === "未知") return "未知";
     
     try {
       const date = new Date(dateString);
@@ -51,31 +51,13 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
       
       <Separator className="my-4" />
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 gap-6">
+        <div className="space-y-4">
           <div className="flex items-start">
             <div className="w-1/3 text-gray-500 font-medium">注册商:</div>
             <div className="w-2/3 font-semibold">{data.registrar || "未知"}</div>
           </div>
           
-          <div className="flex items-start">
-            <div className="w-1/3 text-gray-500 font-medium">状态:</div>
-            <div className="w-2/3">
-              {data.status ? (
-                <div className="flex flex-wrap gap-1">
-                  {data.status.split(' ').map((status, index) => (
-                    <span key={index} className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                      <Shield className="h-3 w-3 mr-1" />
-                      {status}
-                    </span>
-                  ))}
-                </div>
-              ) : "未知"}
-            </div>
-          </div>
-        </div>
-        
-        <div className="space-y-2">
           <div className="flex items-start">
             <div className="w-1/3 text-gray-500 font-medium">
               <div className="flex items-center">
@@ -95,11 +77,55 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
             </div>
             <div className="w-2/3">{formatDate(data.expiryDate)}</div>
           </div>
+          
+          <div className="flex items-start">
+            <div className="w-1/3 text-gray-500 font-medium">
+              <div className="flex items-center">
+                <RefreshCcw className="h-4 w-4 mr-1" />
+                最后更新:
+              </div>
+            </div>
+            <div className="w-2/3">{formatDate(data.lastUpdated)}</div>
+          </div>
+          
+          {data.nameServers && data.nameServers.length > 0 && (
+            <div className="flex items-start">
+              <div className="w-1/3 text-gray-500 font-medium">
+                <div className="flex items-center">
+                  <Server className="h-4 w-4 mr-1" />
+                  域名服务器:
+                </div>
+              </div>
+              <div className="w-2/3">
+                <ul className="list-disc list-inside space-y-1">
+                  {data.nameServers.map((ns, index) => (
+                    <li key={index} className="text-gray-700">{ns}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          
+          <div className="flex items-start">
+            <div className="w-1/3 text-gray-500 font-medium">状态:</div>
+            <div className="w-2/3">
+              {data.status ? (
+                <div className="flex flex-wrap gap-1">
+                  {typeof data.status === 'string' && data.status.split(/[,\s]+/).filter(Boolean).map((status, index) => (
+                    <span key={index} className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                      <Shield className="h-3 w-3 mr-1" />
+                      {status}
+                    </span>
+                  ))}
+                </div>
+              ) : "未知"}
+            </div>
+          </div>
         </div>
       </div>
       
       <div className="mt-6 text-sm text-gray-500 italic">
-        注意: 此信息仅供参考，可能不完整或不准确。请联系域名注册商获取完整信息。
+        注意: 此信息来自公共WHOIS API服务，可能会有延迟或不完整。
       </div>
     </Card>
   );
