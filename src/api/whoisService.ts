@@ -1,3 +1,4 @@
+
 // WHOIS 查询服务 - 调用后端 API 获取数据
 
 export interface WhoisResult {
@@ -68,13 +69,14 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     console.log(`正在通过API查询 ${domain} 的WHOIS信息...`);
 
     // 构建API URL
-    const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
+    const apiUrl = `api/whois?domain=${encodeURIComponent(domain)}`;
     
     // 调用API
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
+        'Content-Type': 'application/json'
       },
     });
     
@@ -90,11 +92,23 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         }
       } catch (e) {
         // 如果不是JSON格式，使用原始文本
+        console.error("解析错误响应失败:", e);
       }
       
       return {
         error: errorMessage,
         rawData: errorText
+      };
+    }
+    
+    // 检查内容类型
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error("服务器返回了非JSON数据:", contentType);
+      return {
+        error: "服务器返回了非JSON格式的数据",
+        rawData: text
       };
     }
     

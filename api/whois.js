@@ -155,6 +155,9 @@ function parseWhoisResponse(response) {
 
 // Main API handler function
 module.exports = async (req, res) => {
+  // 确保设置正确的Content-Type
+  res.setHeader('Content-Type', 'application/json');
+  
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
