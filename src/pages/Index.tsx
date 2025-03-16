@@ -15,6 +15,7 @@ const Index = () => {
   const handleSearch = async (domain: string) => {
     setIsLoading(true);
     setSearchedDomain(domain);
+    setWhoisData(null); // 清除之前的结果
     
     try {
       const result = await queryWhois(domain);
