@@ -38,6 +38,7 @@ const whoisServers = {
 function queryWhoisServer(domain, server) {
   return new Promise((resolve, reject) => {
     const client = net.createConnection({ port: 43, host: server }, () => {
+      // WHOIS protocol: Send domain name followed by CRLF
       client.write(domain + '\r\n');
     });
     
@@ -64,10 +65,12 @@ function queryWhoisServer(domain, server) {
 
 // Parse WHOIS response to extract important information
 function parseWhoisResponse(response) {
+  // Always include raw data for debugging and display
   const result = {
     rawData: response
   };
 
+  // Define regex patterns for different WHOIS data fields
   const patterns = {
     registrar: [
       /Registrar:\s*(.*?)[\r\n]/i,
@@ -78,7 +81,8 @@ function parseWhoisResponse(response) {
       /Creation Date:\s*(.*?)[\r\n]/i, 
       /Created on:\s*(.*?)[\r\n]/i,
       /Registration Date:\s*(.*?)[\r\n]/i,
-      /注册时间:\s*(.*?)[\r\n]/i
+      /注册时间:\s*(.*?)[\r\n]/i,
+      /Registry Creation Date:\s*(.*?)[\r\n]/i
     ],
     expiryDate: [
       /Expir(?:y|ation) Date:\s*(.*?)[\r\n]/i,
@@ -89,7 +93,9 @@ function parseWhoisResponse(response) {
     lastUpdated: [
       /Updated Date:\s*(.*?)[\r\n]/i,
       /Last Modified:\s*(.*?)[\r\n]/i,
-      /更新时间:\s*(.*?)[\r\n]/i
+      /更新时间:\s*(.*?)[\r\n]/i,
+      /Last update:\s*(.*?)[\r\n]/i,
+      /Update Date:\s*(.*?)[\r\n]/i
     ],
     status: [
       /Status:\s*(.*?)[\r\n]/i,
@@ -99,11 +105,13 @@ function parseWhoisResponse(response) {
     nameServers: [
       /Name Server:\s*(.*?)[\r\n]/ig,
       /Nameservers?:\s*(.*?)[\r\n]/ig,
-      /域名服务器:\s*(.*?)[\r\n]/ig
+      /域名服务器:\s*(.*?)[\r\n]/ig,
+      /nserver:\s*(.*?)[\r\n]/ig
     ],
     registrant: [
       /Registrant(?:\s+Organization)?:\s*(.*?)[\r\n]/i,
-      /注册人:\s*(.*?)[\r\n]/i
+      /注册人:\s*(.*?)[\r\n]/i,
+      /Registrant Name:\s*(.*?)[\r\n]/i
     ],
     registrantEmail: [
       /Registrant Email:\s*(.*?)[\r\n]/i,
@@ -121,8 +129,8 @@ function parseWhoisResponse(response) {
       const nameServers = [];
       for (const pattern of patternsList) {
         let match;
-        pattern.lastIndex = 0; // Reset regex state
-        while ((match = pattern.exec(response)) !== null) {
+        const regex = new RegExp(pattern.source, 'gi'); // Create a new regex for each iteration
+        while ((match = regex.exec(response)) !== null) {
           if (match[1] && match[1].trim()) {
             nameServers.push(match[1].trim());
           }
@@ -162,24 +170,24 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: '只支持 GET 和 POST 请求' });
   }
 
-  // Get domain from query parameter or request body
-  const domain = (req.method === 'GET') 
-    ? req.query.domain 
-    : (req.body ? req.body.domain : null);
-
-  if (!domain) {
-    return res.status(400).json({ error: '请提供域名参数' });
-  }
-
-  // Validate domain format
-  const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
-  if (!domainRegex.test(domain)) {
-    return res.status(400).json({ error: '无效的域名格式' });
-  }
-
   try {
+    // Get domain from query parameter or request body
+    const domain = (req.method === 'GET') 
+      ? req.query.domain 
+      : (req.body ? req.body.domain : null);
+
+    if (!domain) {
+      return res.status(400).json({ error: '请提供域名参数' });
+    }
+
+    // Validate domain format
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
+    if (!domainRegex.test(domain)) {
+      return res.status(400).json({ error: '无效的域名格式' });
+    }
+
     // Extract the TLD
-    const tld = domain.split('.').pop();
+    const tld = domain.split('.').pop().toLowerCase();
     const whoisServer = whoisServers[tld];
     
     if (!whoisServer) {
@@ -200,7 +208,7 @@ module.exports = async (req, res) => {
     console.error('WHOIS查询错误:', error);
     return res.status(500).json({
       error: `查询出错: ${error.message}`,
-      message: '服务器处理请求时出错，请稍后再试'
+      message: error.toString()
     });
   }
 };

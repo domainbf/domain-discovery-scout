@@ -5,7 +5,7 @@ import WhoisResults from '@/components/WhoisResults';
 import { queryWhois, WhoisResult } from '@/api/whoisService';
 import { toast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, InfoIcon } from 'lucide-react';
+import { InfoIcon, Globe, Server } from 'lucide-react';
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +59,11 @@ const Index = () => {
           <InfoIcon className="h-4 w-4" />
           <AlertTitle>关于本服务</AlertTitle>
           <AlertDescription>
-            本系统使用后端服务器通过Socket连接到WHOIS服务器获取真实数据。支持多种顶级域名，包括.com、.net、.org、.cn等。
+            <p>本系统使用后端服务器通过Socket连接到官方WHOIS服务器获取真实数据。支持多种顶级域名，包括.com、.net、.org、.cn等。</p>
+            <div className="mt-2 flex items-center text-sm text-gray-600">
+              <Server className="h-4 w-4 mr-1" />
+              <span>数据来源：直连WHOIS官方服务器，确保数据真实可靠</span>
+            </div>
           </AlertDescription>
         </Alert>
 

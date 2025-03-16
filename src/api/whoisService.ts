@@ -61,40 +61,58 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       return { error: "无效的域名格式" };
     }
 
-    const tld = domain.split('.').pop() || "";
+    const tld = domain.split('.').pop()?.toLowerCase() || "";
     if (!whoisServers[tld]) {
       return { error: `不支持的顶级域名: .${tld}` };
     }
     
     console.log(`正在通过API查询 ${domain} 的WHOIS信息...`);
 
-    // 构建API URL - 使用相对路径，这样在不同环境下都能正常工作
+    // 构建API URL
     const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
     
     // 调用API
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
     });
     
     if (!response.ok) {
-      const errorData = await response.json();
-      return { 
-        error: errorData.error || `服务器返回错误: ${response.status}`,
-        rawData: errorData.message
-      };
+      try {
+        const errorData = await response.json();
+        return { 
+          error: errorData.error || `服务器返回错误: ${response.status}`,
+          rawData: errorData.message
+        };
+      } catch (e) {
+        // 如果响应不是JSON格式
+        const errorText = await response.text();
+        return {
+          error: `服务器返回错误: ${response.status}`,
+          rawData: errorText
+        };
+      }
     }
     
     // 解析API响应
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      const text = await response.text();
+      return {
+        error: "解析响应失败",
+        rawData: text
+      };
+    }
     
     // 如果API返回了错误信息
     if (data.error) {
       return { 
         error: data.error,
-        rawData: data.message
+        rawData: data.message || data.rawData
       };
     }
     

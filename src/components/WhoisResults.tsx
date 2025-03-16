@@ -3,7 +3,7 @@ import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { WhoisResult } from '@/api/whoisService';
-import { AlertCircle, Globe, Calendar, Shield, Server, User, RefreshCcw, FileText } from "lucide-react";
+import { AlertCircle, Globe, Calendar, Shield, Server, User, RefreshCcw, FileText, Mail, Phone } from "lucide-react";
 
 interface WhoisResultsProps {
   data: WhoisResult | null;
@@ -40,6 +40,10 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
     
     try {
       const date = new Date(dateString);
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        return dateString; // Return original if invalid date
+      }
       return new Intl.DateTimeFormat('zh-CN', {
         year: 'numeric',
         month: 'long',
@@ -98,6 +102,42 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
             <div className="w-2/3">{formatDate(data.lastUpdated)}</div>
           </div>
           
+          {data.registrant && (
+            <div className="flex items-start">
+              <div className="w-1/3 text-gray-500 font-medium">
+                <div className="flex items-center">
+                  <User className="h-4 w-4 mr-1" />
+                  注册人:
+                </div>
+              </div>
+              <div className="w-2/3">{data.registrant}</div>
+            </div>
+          )}
+          
+          {data.registrantEmail && (
+            <div className="flex items-start">
+              <div className="w-1/3 text-gray-500 font-medium">
+                <div className="flex items-center">
+                  <Mail className="h-4 w-4 mr-1" />
+                  联系邮箱:
+                </div>
+              </div>
+              <div className="w-2/3">{data.registrantEmail}</div>
+            </div>
+          )}
+          
+          {data.registrantPhone && (
+            <div className="flex items-start">
+              <div className="w-1/3 text-gray-500 font-medium">
+                <div className="flex items-center">
+                  <Phone className="h-4 w-4 mr-1" />
+                  联系电话:
+                </div>
+              </div>
+              <div className="w-2/3">{data.registrantPhone}</div>
+            </div>
+          )}
+          
           {data.nameServers && data.nameServers.length > 0 && (
             <div className="flex items-start">
               <div className="w-1/3 text-gray-500 font-medium">
@@ -121,7 +161,7 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
             <div className="w-2/3">
               {data.status ? (
                 <div className="flex flex-wrap gap-1">
-                  {typeof data.status === 'string' && data.status.split(/[,\s]+/).filter(Boolean).map((status, index) => (
+                  {typeof data.status === 'string' && data.status.split(/[,\s;]+/).filter(Boolean).map((status, index) => (
                     <span key={index} className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                       <Shield className="h-3 w-3 mr-1" />
                       {status}
@@ -156,9 +196,11 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
         </div>
       )}
       
-      <div className="mt-6 text-sm text-gray-500 italic">
-        <p>注意: 在浏览器环境中无法直接使用Socket连接到WHOIS服务器。</p>
-        <p>要实现完整功能，您需要创建一个后端服务来处理Socket连接。</p>
+      <div className="mt-6 pt-4 border-t border-gray-100 text-sm text-gray-500">
+        <p className="flex items-center">
+          <Globe className="h-4 w-4 mr-1 text-blue-500" />
+          <span>通过直接Socket连接到官方WHOIS服务器获取实时数据</span>
+        </p>
       </div>
     </Card>
   );
