@@ -1,4 +1,3 @@
-
 // WHOIS 查询服务 - 调用后端 API 获取数据
 
 export interface WhoisResult {
@@ -68,8 +67,8 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     console.log(`正在通过API查询 ${domain} 的WHOIS信息...`);
 
-    // 构建API URL
-    const apiUrl = `api/whois?domain=${encodeURIComponent(domain)}`;
+    // 确保API路径正确 - 使用绝对路径
+    const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
     
     // 调用API
     const response = await fetch(apiUrl, {
@@ -80,15 +79,17 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       },
     });
     
+    let responseText = await response.text();
+    let responseData;
+    
     if (!response.ok) {
-      const errorText = await response.text();
       let errorMessage = `服务器返回错误: ${response.status}`;
       
       try {
         // 尝试解析错误信息为JSON
-        const errorData = JSON.parse(errorText);
-        if (errorData.error) {
-          errorMessage = errorData.error;
+        responseData = JSON.parse(responseText);
+        if (responseData.error) {
+          errorMessage = responseData.error;
         }
       } catch (e) {
         // 如果不是JSON格式，使用原始文本
@@ -97,33 +98,30 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       
       return {
         error: errorMessage,
-        rawData: errorText
+        rawData: responseText
       };
     }
     
-    // 检查内容类型
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text();
-      console.error("服务器返回了非JSON数据:", contentType);
+    // 尝试将响应解析为JSON
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      console.error("服务器返回了非JSON数据:", e);
       return {
         error: "服务器返回了非JSON格式的数据",
-        rawData: text
+        rawData: responseText
       };
     }
-    
-    // 解析API响应 - 只读取一次响应体
-    const data = await response.json();
     
     // 如果API返回了错误信息
-    if (data.error) {
+    if (responseData.error) {
       return { 
-        error: data.error,
-        rawData: data.message || data.rawData
+        error: responseData.error,
+        rawData: responseData.message || responseData.rawData
       };
     }
     
-    return data;
+    return responseData;
   } catch (error) {
     console.error("WHOIS查询错误:", error);
     return { error: `查询出错: ${error instanceof Error ? error.message : String(error)}` };

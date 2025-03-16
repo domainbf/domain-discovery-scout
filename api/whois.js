@@ -155,7 +155,7 @@ function parseWhoisResponse(response) {
 
 // Main API handler function
 module.exports = async (req, res) => {
-  // 确保设置正确的Content-Type
+  // Always set correct Content-Type header first
   res.setHeader('Content-Type', 'application/json');
   
   // Set CORS headers
@@ -205,7 +205,7 @@ module.exports = async (req, res) => {
     // Parse the response
     const parsedResult = parseWhoisResponse(whoisResponse);
     
-    // Return the result
+    // Return the result as JSON
     return res.status(200).json(parsedResult);
   } catch (error) {
     console.error('WHOIS查询错误:', error);
