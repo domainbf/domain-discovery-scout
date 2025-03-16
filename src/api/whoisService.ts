@@ -1,4 +1,3 @@
-
 // WHOIS 查询服务 - 调用后端 API 获取数据
 
 export interface WhoisResult {
@@ -80,33 +79,27 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     });
     
     if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `服务器返回错误: ${response.status}`;
+      
       try {
-        const errorData = await response.json();
-        return { 
-          error: errorData.error || `服务器返回错误: ${response.status}`,
-          rawData: errorData.message
-        };
+        // 尝试解析错误信息为JSON
+        const errorData = JSON.parse(errorText);
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        }
       } catch (e) {
-        // 如果响应不是JSON格式
-        const errorText = await response.text();
-        return {
-          error: `服务器返回错误: ${response.status}`,
-          rawData: errorText
-        };
+        // 如果不是JSON格式，使用原始文本
       }
-    }
-    
-    // 解析API响应
-    let data;
-    try {
-      data = await response.json();
-    } catch (e) {
-      const text = await response.text();
+      
       return {
-        error: "解析响应失败",
-        rawData: text
+        error: errorMessage,
+        rawData: errorText
       };
     }
+    
+    // 解析API响应 - 只读取一次响应体
+    const data = await response.json();
     
     // 如果API返回了错误信息
     if (data.error) {
