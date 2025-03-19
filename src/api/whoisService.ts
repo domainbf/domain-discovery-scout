@@ -1,5 +1,6 @@
 
 // WHOIS 查询服务 - 调用后端 API 获取数据
+import { fallbackQueryWhois } from './fallbackWhoisService';
 
 export interface WhoisResult {
   registrar?: string;
@@ -51,7 +52,7 @@ const whoisServers: Record<string, string> = {
 
 /**
  * 查询域名的WHOIS信息
- * 使用后端API实现Socket连接到WHOIS服务器
+ * 直接使用公共API实现WHOIS查询
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
@@ -66,10 +67,10 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       return { error: `不支持的顶级域名: .${tld}` };
     }
     
-    console.log(`正在通过API查询 ${domain} 的WHOIS信息...`);
+    console.log(`正在查询 ${domain} 的WHOIS信息...`);
 
-    // 修改为使用前端服务的路径
-    const apiUrl = `/api/whois-query?domain=${encodeURIComponent(domain)}`;
+    // 直接使用公共WHOIS API
+    const apiUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=at_demo&domainName=${encodeURIComponent(domain)}&outputFormat=JSON`;
     
     console.log("请求API URL:", apiUrl);
     
@@ -83,46 +84,47 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       cache: 'no-cache' // 禁用缓存
     });
     
-    // 读取响应文本（只读取一次）
-    const responseText = await response.text();
+    // 确保响应是有效的
+    if (!response.ok) {
+      console.error(`API请求失败: ${response.status} ${response.statusText}`);
+      return fallbackQueryWhois(domain); // 使用备用服务
+    }
     
-    console.log("API响应状态:", response.status, response.statusText);
-    console.log("API响应头:", JSON.stringify(Object.fromEntries([...response.headers.entries()])));
-    console.log("API响应内容预览:", responseText.substring(0, 200) + '...');
-    
-    // 尝试解析为JSON
     try {
-      const data = JSON.parse(responseText);
+      const data = await response.json();
       
       // 如果API返回了错误信息
-      if (data.error) {
-        return { 
-          error: data.error,
-          rawData: data.message || data.rawData
-        };
+      if (data.ErrorMessage) {
+        console.error("API返回错误:", data.ErrorMessage);
+        return fallbackQueryWhois(domain); // 使用备用服务
       }
       
-      return data;
-    } catch (e) {
-      console.error("解析JSON响应失败:", e);
-      // 如果响应文本包含JavaScript函数或HTML，说明返回的是API文件本身而不是执行结果
-      if (responseText.includes('function') || responseText.includes('module.exports') || responseText.includes('<html>')) {
+      // 提取WHOIS信息
+      if (data && data.WhoisRecord) {
+        const record = data.WhoisRecord;
+        
         return {
-          error: "API端点配置错误，返回了代码文件而不是执行结果",
-          rawData: responseText.substring(0, 1000) // 仅显示一部分以避免过长
+          registrar: record.registrarName || record.registrar,
+          creationDate: record.createdDate || record.registryData?.createdDate,
+          expiryDate: record.expiryDate || record.registryData?.expiryDate,
+          lastUpdated: record.updatedDate || record.registryData?.updatedDate,
+          status: Array.isArray(record.status) ? record.status.join(', ') : record.status,
+          nameServers: record.nameServers?.hostNames || [],
+          registrant: record.registrant?.name || record.registrant?.organization,
+          registrantEmail: record.registrant?.email,
+          registrantPhone: record.registrant?.telephone,
+          rawData: record.rawText
         };
+      } else {
+        console.error("API返回数据格式不正确");
+        return fallbackQueryWhois(domain); // 使用备用服务
       }
-      
-      return {
-        error: "服务器返回了非JSON格式的数据",
-        rawData: responseText
-      };
+    } catch (error) {
+      console.error("解析API响应失败:", error);
+      return fallbackQueryWhois(domain); // 使用备用服务
     }
   } catch (error) {
     console.error("WHOIS查询错误:", error);
-    return { 
-      error: `查询出错: ${error instanceof Error ? error.message : String(error)}`,
-      rawData: String(error)
-    };
+    return fallbackQueryWhois(domain); // 使用备用服务
   }
 }

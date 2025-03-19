@@ -1,5 +1,4 @@
 
-import { NextApiRequest, NextApiResponse } from 'next';
 import net from 'net';
 
 // WHOIS servers list - same as in api/whois.js
@@ -34,28 +33,17 @@ const whoisServers: Record<string, string> = {
   "no": "whois.norid.no"
 };
 
-// 实现一个简单的前端API来处理WHOIS查询
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // 设置正确的响应头
-  res.setHeader('Content-Type', 'application/json');
-  
-  // 检查请求方法
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: '只支持GET请求' });
-  }
-
+// Function to handle WHOIS queries as a direct function
+export async function handleWhoisQuery(domain: string) {
   try {
-    // 获取域名参数
-    const domain = req.query.domain as string;
-
     if (!domain) {
-      return res.status(400).json({ error: '请提供域名参数' });
+      return { error: '请提供域名参数' };
     }
 
     // 验证域名格式
     const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
     if (!domainRegex.test(domain)) {
-      return res.status(400).json({ error: '无效的域名格式' });
+      return { error: '无效的域名格式' };
     }
 
     // 提取顶级域名
@@ -63,22 +51,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const whoisServer = whoisServers[tld];
     
     if (!whoisServer) {
-      return res.status(400).json({ error: `不支持的顶级域名: .${tld}` });
+      return { error: `不支持的顶级域名: .${tld}` };
     }
     
     console.log(`正在查询WHOIS服务器 ${whoisServer} 获取 ${domain} 的信息...`);
     
-    // 直接调用WHOIS API
+    // 直接调用WHOIS服务器
     const whoisData = await queryWhoisServer(domain, whoisServer);
     const parsedResult = parseWhoisResponse(whoisData);
     
-    return res.status(200).json(parsedResult);
+    return parsedResult;
   } catch (error) {
     console.error('WHOIS查询错误:', error);
-    return res.status(500).json({
+    return {
       error: `查询出错: ${error instanceof Error ? error.message : String(error)}`,
       message: String(error)
-    });
+    };
   }
 }
 
