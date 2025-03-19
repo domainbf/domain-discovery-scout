@@ -3,25 +3,42 @@ import React, { useState } from 'react';
 import DomainSearch from '@/components/DomainSearch';
 import WhoisResults from '@/components/WhoisResults';
 import { queryWhois, WhoisResult } from '@/api/whoisService';
+import { fallbackQueryWhois } from '@/api/fallbackWhoisService';
 import { toast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { InfoIcon, Globe, Server } from 'lucide-react';
+import { InfoIcon, Globe, Server, AlertTriangle } from 'lucide-react';
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchedDomain, setSearchedDomain] = useState('');
   const [whoisData, setWhoisData] = useState<WhoisResult | null>(null);
   const [hasError, setHasError] = useState(false);
+  const [usedFallback, setUsedFallback] = useState(false);
 
   const handleSearch = async (domain: string) => {
     setIsLoading(true);
     setSearchedDomain(domain);
     setWhoisData(null); // 清除之前的结果
     setHasError(false);
+    setUsedFallback(false);
     
     try {
       console.log(`开始查询域名: ${domain}`);
-      const result = await queryWhois(domain);
+      // 首先尝试主要API
+      let result = await queryWhois(domain);
+      
+      // 如果主API返回错误，尝试使用备用API
+      if (result.error && result.error.includes("API端点配置错误")) {
+        console.log("主API配置错误，切换到备用API...");
+        toast({
+          title: "切换到备用API",
+          description: "主API无法使用，正在使用备用服务...",
+        });
+        
+        result = await fallbackQueryWhois(domain);
+        setUsedFallback(true);
+      }
+      
       setWhoisData(result);
       
       if (result.error) {
@@ -75,6 +92,12 @@ const Index = () => {
               <Server className="h-4 w-4 mr-1" />
               <span>数据来源：直连WHOIS官方服务器，确保数据真实可靠</span>
             </div>
+            {usedFallback && (
+              <div className="mt-2 flex items-center text-sm text-amber-600">
+                <AlertTriangle className="h-4 w-4 mr-1" />
+                <span>注意：当前使用备用API提供查询服务</span>
+              </div>
+            )}
           </AlertDescription>
         </Alert>
 

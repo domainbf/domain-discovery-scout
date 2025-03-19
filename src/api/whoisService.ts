@@ -68,9 +68,10 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     console.log(`正在通过API查询 ${domain} 的WHOIS信息...`);
 
-    // 确保API URL使用正确的路径
-    // 注意：使用相对路径可能导致问题，因此使用绝对路径
-    const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
+    // 修改为使用前端服务的路径
+    const apiUrl = `/api/whois-query?domain=${encodeURIComponent(domain)}`;
+    
+    console.log("请求API URL:", apiUrl);
     
     // 调用API
     const response = await fetch(apiUrl, {
