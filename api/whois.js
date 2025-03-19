@@ -155,7 +155,7 @@ function parseWhoisResponse(response) {
 
 // Main API handler function
 module.exports = async (req, res) => {
-  // Always set correct Content-Type header first
+  // CRITICAL: Always set correct Content-Type header first to ensure JSON response
   res.setHeader('Content-Type', 'application/json');
   
   // Set CORS headers
@@ -165,7 +165,7 @@ module.exports = async (req, res) => {
 
   // Handle OPTIONS request for CORS preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return res.status(200).json({ status: 'ok' });
   }
 
   // Only allow GET and POST requests
@@ -205,7 +205,7 @@ module.exports = async (req, res) => {
     // Parse the response
     const parsedResult = parseWhoisResponse(whoisResponse);
     
-    // Return the result as JSON
+    // Return the result as JSON - ensure we're returning valid JSON
     return res.status(200).json(parsedResult);
   } catch (error) {
     console.error('WHOIS查询错误:', error);

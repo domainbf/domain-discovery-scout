@@ -1,3 +1,4 @@
+
 // WHOIS 查询服务 - 调用后端 API 获取数据
 
 export interface WhoisResult {
@@ -67,19 +68,26 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     console.log(`正在通过API查询 ${domain} 的WHOIS信息...`);
 
-    // 使用绝对路径确保API URL正确
+    // 确保API URL使用正确的路径
+    // 注意：使用相对路径可能导致问题，因此使用绝对路径
     const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
     
     // 调用API
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
       },
+      cache: 'no-cache' // 禁用缓存
     });
     
     // 读取响应文本（只读取一次）
     const responseText = await response.text();
+    
+    console.log("API响应状态:", response.status, response.statusText);
+    console.log("API响应头:", JSON.stringify(Object.fromEntries([...response.headers.entries()])));
+    console.log("API响应内容预览:", responseText.substring(0, 200) + '...');
     
     // 尝试解析为JSON
     try {
@@ -96,6 +104,14 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       return data;
     } catch (e) {
       console.error("解析JSON响应失败:", e);
+      // 如果响应文本包含JavaScript函数或HTML，说明返回的是API文件本身而不是执行结果
+      if (responseText.includes('function') || responseText.includes('module.exports') || responseText.includes('<html>')) {
+        return {
+          error: "API端点配置错误，返回了代码文件而不是执行结果",
+          rawData: responseText.substring(0, 1000) // 仅显示一部分以避免过长
+        };
+      }
+      
       return {
         error: "服务器返回了非JSON格式的数据",
         rawData: responseText
@@ -104,7 +120,8 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
   } catch (error) {
     console.error("WHOIS查询错误:", error);
     return { 
-      error: `查询出错: ${error instanceof Error ? error.message : String(error)}` 
+      error: `查询出错: ${error instanceof Error ? error.message : String(error)}`,
+      rawData: String(error)
     };
   }
 }
