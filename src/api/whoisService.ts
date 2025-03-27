@@ -78,15 +78,46 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     console.log(`正在查询 ${domain} 的WHOIS信息...`);
 
-    // 调用本地WHOIS API
-    const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
-    
-    console.log("请求API URL:", apiUrl);
-    
-    // 设置15秒的超时
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
+    // 两种API方式:
+    // 1. 本地Express服务器 (优先)
+    // 2. Vercel无服务器API (备用)
+    // 我们会先尝试本地API，如果失败再尝试无服务器API
+
+    // 尝试本地API
+    try {
+      const result = await queryLocalApi(domain);
+      if (!result.error) {
+        return result;
+      }
+      console.warn(`本地API查询失败: ${result.error}`);
+      // 如果本地API失败，尝试无服务器API
+      return await queryServerlessApi(domain);
+    } catch (error) {
+      console.warn(`本地API查询错误: ${error}`);
+      // 如果本地API出错，尝试无服务器API
+      return await queryServerlessApi(domain);
+    }
+  } catch (error) {
+    console.error("WHOIS查询错误:", error);
+    return { 
+      error: `查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      rawData: String(error)
+    };
+  }
+}
+
+// 使用本地Express服务器的API
+async function queryLocalApi(domain: string): Promise<WhoisResult> {
+  // 设置API URL为相对路径，这样会先尝试本地服务器
+  const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
+  
+  console.log("请求本地API URL:", apiUrl);
+  
+  // 设置20秒的超时，考虑到某些WHOIS服务器可能较慢
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  
+  try {
     // 调用API
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -102,7 +133,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     // 确保响应是有效的
     if (!response.ok) {
-      console.error(`API请求失败: ${response.status} ${response.statusText}`);
+      console.error(`本地API请求失败: ${response.status} ${response.statusText}`);
       const errorText = await response.text();
       console.error("错误响应:", errorText);
       
@@ -116,7 +147,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       }
       
       return { 
-        error: `API请求失败: ${response.status}`,
+        error: `本地API请求失败: ${response.status}`,
         rawData: parsedError
       };
     }
@@ -126,7 +157,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       
       // 如果API返回了错误信息
       if (data.error) {
-        console.error("API返回错误:", data.error);
+        console.error("本地API返回错误:", data.error);
         return {
           error: data.error,
           rawData: data.message || data.rawData || "无错误详情"
@@ -147,24 +178,113 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         rawData: data.rawData
       };
     } catch (error) {
-      console.error("解析API响应失败:", error);
+      console.error("解析本地API响应失败:", error);
       return { 
-        error: `解析API响应失败: ${error instanceof Error ? error.message : String(error)}`,
+        error: `解析本地API响应失败: ${error instanceof Error ? error.message : String(error)}`,
         rawData: String(error)
       };
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      console.error("WHOIS查询超时");
+      console.error("本地API查询超时");
       return { 
-        error: "查询超时，请稍后再试",
+        error: "本地查询超时，尝试备用API",
         rawData: "请求超时"
       };
     }
     
-    console.error("WHOIS查询错误:", error);
+    console.error("本地API查询错误:", error);
     return { 
-      error: `查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      error: `本地查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      rawData: String(error)
+    };
+  }
+}
+
+// 使用Vercel无服务器API
+async function queryServerlessApi(domain: string): Promise<WhoisResult> {
+  const tld = domain.split('.').pop()?.toLowerCase() || "";
+  const whoisServer = whoisServers[tld];
+  
+  console.log(`尝试使用无服务器API查询 ${domain}，WHOIS服务器: ${whoisServer}`);
+  
+  // 设置API URL为/api/whois-direct（新API路径）
+  const apiUrl = `/api/whois-direct?domain=${encodeURIComponent(domain)}&server=${encodeURIComponent(whoisServer)}`;
+  
+  // 设置20秒的超时
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  
+  try {
+    // 调用API
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      signal: controller.signal,
+      cache: 'no-cache' // 禁用缓存
+    });
+    
+    clearTimeout(timeoutId);
+    
+    // 确保响应是有效的
+    if (!response.ok) {
+      console.error(`无服务器API请求失败: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error("错误响应:", errorText);
+      
+      return { 
+        error: `无服务器API请求失败: ${response.status}`,
+        rawData: errorText
+      };
+    }
+    
+    try {
+      const data = await response.json();
+      
+      // 如果API返回了错误信息
+      if (data.error) {
+        console.error("无服务器API返回错误:", data.error);
+        return {
+          error: data.error,
+          rawData: data.message || "无错误详情"
+        };
+      }
+      
+      // 直接返回API结果
+      return {
+        registrar: data.registrar,
+        creationDate: data.creationDate,
+        expiryDate: data.expiryDate,
+        lastUpdated: data.lastUpdated,
+        status: data.status,
+        nameServers: data.nameServers,
+        registrant: data.registrant,
+        registrantEmail: data.registrantEmail,
+        registrantPhone: data.registrantPhone,
+        rawData: data.rawData
+      };
+    } catch (error) {
+      console.error("解析无服务器API响应失败:", error);
+      return { 
+        error: `解析无服务器API响应失败: ${error instanceof Error ? error.message : String(error)}`,
+        rawData: String(error)
+      };
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error("无服务器API查询超时");
+      return { 
+        error: "无服务器查询超时，请稍后再试",
+        rawData: "请求超时"
+      };
+    }
+    
+    console.error("无服务器API查询错误:", error);
+    return { 
+      error: `无服务器查询错误: ${error instanceof Error ? error.message : String(error)}`,
       rawData: String(error)
     };
   }

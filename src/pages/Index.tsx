@@ -1,12 +1,12 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DomainSearch from '@/components/DomainSearch';
 import WhoisResults from '@/components/WhoisResults';
 import { queryWhois, WhoisResult, whoisServers } from '@/api/whoisService';
 import { fallbackQueryWhois } from '@/api/fallbackWhoisService';
 import { toast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { InfoIcon, Globe, Server, AlertTriangle, HelpCircle } from 'lucide-react';
+import { InfoIcon, Globe, Server, AlertTriangle, HelpCircle, CheckCircle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -21,9 +21,34 @@ const Index = () => {
   const [hasError, setHasError] = useState(false);
   const [usedFallback, setUsedFallback] = useState(false);
   const [apiErrorDetails, setApiErrorDetails] = useState<string | null>(null);
+  const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   // 获取当前支持的顶级域名列表
   const supportedTLDs = Object.keys(whoisServers).sort();
+
+  // 检查本地API服务器状态
+  useEffect(() => {
+    const checkServerStatus = async () => {
+      try {
+        // 尝试连接到本地API的健康检查端点
+        const response = await fetch('/api/health', { 
+          method: 'GET',
+          cache: 'no-cache'
+        });
+        
+        setServerStatus(response.ok ? 'online' : 'offline');
+      } catch (error) {
+        console.warn('本地API服务器可能离线:', error);
+        setServerStatus('offline');
+      }
+    };
+
+    checkServerStatus();
+    // 每30秒检查一次服务器状态
+    const intervalId = setInterval(checkServerStatus, 30000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
 
   const handleSearch = async (domain: string) => {
     setIsLoading(true);
@@ -113,18 +138,20 @@ const Index = () => {
               <Server className="h-4 w-4 mr-1" />
               <span>数据来源：直连WHOIS官方服务器，确保数据真实可靠</span>
               
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="ml-2 inline-flex items-center cursor-help">
-                    <HelpCircle className="h-4 w-4 text-blue-500" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-md p-4">
-                  <p className="font-medium">如何添加新的顶级域名支持？</p>
-                  <p className="mt-1 text-sm">在源代码的 <code>whoisService.ts</code> 文件中的 <code>whoisServers</code> 对象中添加新的顶级域名和对应的WHOIS服务器地址。</p>
-                  <p className="mt-2 text-sm">例如: <code>"bb": "whois.nic.bb"</code></p>
-                </TooltipContent>
-              </Tooltip>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="ml-2 inline-flex items-center cursor-help">
+                      <HelpCircle className="h-4 w-4 text-blue-500" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-md p-4">
+                    <p className="font-medium">如何添加新的顶级域名支持？</p>
+                    <p className="mt-1 text-sm">在源代码的 <code>whoisService.ts</code> 文件中的 <code>whoisServers</code> 对象中添加新的顶级域名和对应的WHOIS服务器地址。</p>
+                    <p className="mt-2 text-sm">例如: <code>"bb": "whois.nic.bb"</code></p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             
             <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
@@ -134,6 +161,29 @@ const Index = () => {
                   .{tld}
                 </span>
               ))}
+            </div>
+            
+            <div className="mt-2 flex items-center text-sm">
+              {serverStatus === 'checking' && (
+                <span className="text-blue-600 flex items-center">
+                  <InfoIcon className="h-4 w-4 mr-1 animate-pulse" />
+                  正在检查API服务器状态...
+                </span>
+              )}
+              
+              {serverStatus === 'online' && (
+                <span className="text-green-600 flex items-center">
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  主API服务器运行正常
+                </span>
+              )}
+              
+              {serverStatus === 'offline' && (
+                <span className="text-amber-600 flex items-center">
+                  <AlertTriangle className="h-4 w-4 mr-1" />
+                  注意：主API服务器可能离线，将使用备用服务
+                </span>
+              )}
             </div>
             
             {usedFallback && (
