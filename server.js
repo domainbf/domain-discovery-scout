@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// WHOIS服务器列表
+// WHOIS服务器列表 - 与api/whois.js保持同步
 const whoisServers = {
   "com": "whois.verisign-grs.com",
   "net": "whois.verisign-grs.com",
@@ -40,12 +40,14 @@ const whoisServers = {
   "nl": "whois.domain-registry.nl",
   "it": "whois.nic.it",
   "se": "whois.iis.se",
-  "no": "whois.norid.no"
+  "no": "whois.norid.no",
+  "bb": "whois.nic.bb"  // 例如：添加巴巴多斯域名服务器
 };
 
 // 通过Socket连接查询WHOIS服务器
 function queryWhoisServer(domain, server) {
   return new Promise((resolve, reject) => {
+    console.log(`正在连接到WHOIS服务器 ${server} 查询 ${domain}...`);
     const client = net.createConnection({ port: 43, host: server }, () => {
       // WHOIS协议：发送域名后跟CRLF
       client.write(domain + '\r\n');
@@ -57,15 +59,18 @@ function queryWhoisServer(domain, server) {
     });
     
     client.on('end', () => {
+      console.log(`成功从 ${server} 获取到 ${domain} 的信息`);
       resolve(data);
     });
     
     client.on('error', (err) => {
+      console.error(`连接到 ${server} 失败:`, err);
       reject(err);
     });
     
     // 设置连接超时
     client.setTimeout(10000, () => {
+      console.error(`连接到 ${server} 超时`);
       client.destroy();
       reject(new Error('连接超时'));
     });
@@ -187,19 +192,27 @@ app.get('/api/whois', async (req, res) => {
     const whoisServer = whoisServers[tld];
     
     if (!whoisServer) {
-      return res.status(400).json({ error: `不支持的顶级域名: .${tld}` });
+      return res.status(400).json({ error: `不支持的顶级域名: .${tld}，请在whoisServers对象中添加对应的WHOIS服务器` });
     }
     
     console.log(`正在查询WHOIS服务器 ${whoisServer} 获取 ${domain} 的信息...`);
     
-    // 查询WHOIS服务器
-    const whoisResponse = await queryWhoisServer(domain, whoisServer);
-    
-    // 解析响应
-    const parsedResult = parseWhoisResponse(whoisResponse);
-    
-    // 返回JSON结果
-    return res.status(200).json(parsedResult);
+    try {
+      // 查询WHOIS服务器
+      const whoisResponse = await queryWhoisServer(domain, whoisServer);
+      
+      // 解析响应
+      const parsedResult = parseWhoisResponse(whoisResponse);
+      
+      // 返回JSON结果
+      return res.status(200).json(parsedResult);
+    } catch (serverError) {
+      console.error(`连接到WHOIS服务器 ${whoisServer} 失败:`, serverError);
+      return res.status(500).json({
+        error: `连接到WHOIS服务器失败: ${serverError.message}`,
+        message: `无法连接到 ${whoisServer}，请确认该服务器是否可用。详细错误: ${serverError.toString()}`
+      });
+    }
   } catch (error) {
     console.error('WHOIS查询错误:', error);
     return res.status(500).json({
@@ -212,4 +225,5 @@ app.get('/api/whois', async (req, res) => {
 // 启动服务器
 app.listen(PORT, () => {
   console.log(`WHOIS查询服务器已启动在 http://localhost:${PORT}`);
+  console.log(`支持的顶级域名: ${Object.keys(whoisServers).map(tld => '.'+tld).join(', ')}`);
 });

@@ -47,12 +47,14 @@ export const whoisServers: Record<string, string> = {
   "nl": "whois.domain-registry.nl",
   "it": "whois.nic.it",
   "se": "whois.iis.se",
-  "no": "whois.norid.no"
+  "no": "whois.norid.no",
+  // 可以根据需要添加更多顶级域名服务器
+  "bb": "whois.nic.bb"  // 例如: 添加巴巴多斯域名服务器
 };
 
 /**
  * 查询域名的WHOIS信息
- * 通过本地API实现WHOIS查询
+ * 使用本地Express服务器通过Socket连接到官方WHOIS服务器
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
@@ -64,7 +66,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
 
     const tld = domain.split('.').pop()?.toLowerCase() || "";
     if (!whoisServers[tld]) {
-      return { error: `不支持的顶级域名: .${tld}` };
+      return { error: `不支持的顶级域名: .${tld}，请在whoisServers对象中添加对应的WHOIS服务器` };
     }
     
     console.log(`正在查询 ${domain} 的WHOIS信息...`);
@@ -74,6 +76,10 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     console.log("请求API URL:", apiUrl);
     
+    // 设置5秒的超时
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
     // 调用API
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -81,13 +87,21 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
       },
+      signal: controller.signal,
       cache: 'no-cache' // 禁用缓存
     });
+    
+    clearTimeout(timeoutId);
     
     // 确保响应是有效的
     if (!response.ok) {
       console.error(`API请求失败: ${response.status} ${response.statusText}`);
-      return fallbackQueryWhois(domain); // 使用备用服务
+      const errorText = await response.text();
+      console.error("错误响应:", errorText);
+      return { 
+        error: `API请求失败: ${response.status}`,
+        rawData: errorText
+      };
     }
     
     try {
@@ -96,7 +110,10 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       // 如果API返回了错误信息
       if (data.error) {
         console.error("API返回错误:", data.error);
-        return fallbackQueryWhois(domain); // 使用备用服务
+        return {
+          error: data.error,
+          rawData: data.message || "无错误详情"
+        };
       }
       
       // 直接返回API结果
@@ -114,10 +131,24 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       };
     } catch (error) {
       console.error("解析API响应失败:", error);
-      return fallbackQueryWhois(domain); // 使用备用服务
+      return { 
+        error: `解析API响应失败: ${error instanceof Error ? error.message : String(error)}`,
+        rawData: String(error)
+      };
     }
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error("WHOIS查询超时");
+      return { 
+        error: "查询超时，请稍后再试",
+        rawData: "请求超时"
+      };
+    }
+    
     console.error("WHOIS查询错误:", error);
-    return fallbackQueryWhois(domain); // 使用备用服务
+    return { 
+      error: `查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      rawData: String(error)
+    };
   }
 }

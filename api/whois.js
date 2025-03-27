@@ -31,7 +31,8 @@ const whoisServers = {
   "nl": "whois.domain-registry.nl",
   "it": "whois.nic.it",
   "se": "whois.iis.se",
-  "no": "whois.norid.no"
+  "no": "whois.norid.no",
+  "bb": "whois.nic.bb"  // 例如：添加巴巴多斯域名服务器
 };
 
 // Query WHOIS server via socket connection
@@ -194,19 +195,27 @@ module.exports = async (req, res) => {
     const whoisServer = whoisServers[tld];
     
     if (!whoisServer) {
-      return res.status(400).json({ error: `不支持的顶级域名: .${tld}` });
+      return res.status(400).json({ error: `不支持的顶级域名: .${tld}，请在whoisServers对象中添加对应的WHOIS服务器` });
     }
     
     console.log(`正在查询WHOIS服务器 ${whoisServer} 获取 ${domain} 的信息...`);
     
-    // Query the WHOIS server
-    const whoisResponse = await queryWhoisServer(domain, whoisServer);
-    
-    // Parse the response
-    const parsedResult = parseWhoisResponse(whoisResponse);
-    
-    // Return the result as JSON - ensure we're returning valid JSON
-    return res.status(200).json(parsedResult);
+    try {
+      // Query the WHOIS server
+      const whoisResponse = await queryWhoisServer(domain, whoisServer);
+      
+      // Parse the response
+      const parsedResult = parseWhoisResponse(whoisResponse);
+      
+      // Return the result as JSON
+      return res.status(200).json(parsedResult);
+    } catch (serverError) {
+      console.error(`连接到WHOIS服务器 ${whoisServer} 失败:`, serverError);
+      return res.status(500).json({
+        error: `连接到WHOIS服务器失败: ${serverError.message}`,
+        message: `无法连接到 ${whoisServer}，请确认该服务器是否可用。详细错误: ${serverError.toString()}`
+      });
+    }
   } catch (error) {
     console.error('WHOIS查询错误:', error);
     return res.status(500).json({
