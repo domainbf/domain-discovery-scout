@@ -14,6 +14,7 @@ const Index = () => {
   const [whoisData, setWhoisData] = useState<WhoisResult | null>(null);
   const [hasError, setHasError] = useState(false);
   const [usedFallback, setUsedFallback] = useState(false);
+  const [apiErrorDetails, setApiErrorDetails] = useState<string | null>(null);
 
   const handleSearch = async (domain: string) => {
     setIsLoading(true);
@@ -21,6 +22,7 @@ const Index = () => {
     setWhoisData(null); // 清除之前的结果
     setHasError(false);
     setUsedFallback(false);
+    setApiErrorDetails(null);
     
     try {
       console.log(`开始查询域名: ${domain}`);
@@ -28,12 +30,15 @@ const Index = () => {
       let result = await queryWhois(domain);
       
       // 如果主API返回错误，尝试使用备用API
-      if (result.error && result.error.includes("API端点配置错误")) {
-        console.log("主API配置错误，切换到备用API...");
+      if (result.error) {
+        console.log("主API返回错误，切换到备用API...", result.error);
         toast({
           title: "切换到备用API",
           description: "主API无法使用，正在使用备用服务...",
         });
+        
+        // 记录之前的错误详情
+        setApiErrorDetails(result.error);
         
         result = await fallbackQueryWhois(domain);
         setUsedFallback(true);
@@ -96,6 +101,12 @@ const Index = () => {
               <div className="mt-2 flex items-center text-sm text-amber-600">
                 <AlertTriangle className="h-4 w-4 mr-1" />
                 <span>注意：当前使用备用API提供查询服务</span>
+              </div>
+            )}
+            {apiErrorDetails && (
+              <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded">
+                <p className="font-medium">主API错误详情:</p>
+                <p className="font-mono text-xs break-all">{apiErrorDetails}</p>
               </div>
             )}
           </AlertDescription>
