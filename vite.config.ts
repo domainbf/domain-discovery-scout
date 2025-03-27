@@ -10,11 +10,11 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     proxy: {
-      // 代理配置，将/api请求转发到正确的API端点
-      '/api': {
-        target: 'https://www.whoisxmlapi.com',
+      // 配置本地WHOIS查询API代理
+      '/api/whois': {
+        target: 'http://localhost:3000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/whois-query/, '/whoisserver/WhoisService')
+        rewrite: (path) => path
       }
     }
   },

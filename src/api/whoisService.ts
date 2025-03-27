@@ -1,5 +1,5 @@
 
-// WHOIS 查询服务 - 调用后端 API 获取数据
+// WHOIS 查询服务 - 调用本地 API 获取数据
 import { fallbackQueryWhois } from './fallbackWhoisService';
 
 export interface WhoisResult {
@@ -19,7 +19,7 @@ export interface WhoisResult {
 }
 
 // 支持查询的顶级域名列表及其对应的WHOIS服务器
-const whoisServers: Record<string, string> = {
+export const whoisServers: Record<string, string> = {
   "com": "whois.verisign-grs.com",
   "net": "whois.verisign-grs.com",
   "org": "whois.pir.org",
@@ -52,7 +52,7 @@ const whoisServers: Record<string, string> = {
 
 /**
  * 查询域名的WHOIS信息
- * 直接使用公共API实现WHOIS查询
+ * 通过本地API实现WHOIS查询
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
@@ -69,8 +69,8 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     console.log(`正在查询 ${domain} 的WHOIS信息...`);
 
-    // 直接使用公共WHOIS API
-    const apiUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=at_demo&domainName=${encodeURIComponent(domain)}&outputFormat=JSON`;
+    // 调用本地WHOIS API
+    const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
     
     console.log("请求API URL:", apiUrl);
     
@@ -94,31 +94,24 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       const data = await response.json();
       
       // 如果API返回了错误信息
-      if (data.ErrorMessage) {
-        console.error("API返回错误:", data.ErrorMessage);
+      if (data.error) {
+        console.error("API返回错误:", data.error);
         return fallbackQueryWhois(domain); // 使用备用服务
       }
       
-      // 提取WHOIS信息
-      if (data && data.WhoisRecord) {
-        const record = data.WhoisRecord;
-        
-        return {
-          registrar: record.registrarName || record.registrar,
-          creationDate: record.createdDate || record.registryData?.createdDate,
-          expiryDate: record.expiryDate || record.registryData?.expiryDate,
-          lastUpdated: record.updatedDate || record.registryData?.updatedDate,
-          status: Array.isArray(record.status) ? record.status.join(', ') : record.status,
-          nameServers: record.nameServers?.hostNames || [],
-          registrant: record.registrant?.name || record.registrant?.organization,
-          registrantEmail: record.registrant?.email,
-          registrantPhone: record.registrant?.telephone,
-          rawData: record.rawText
-        };
-      } else {
-        console.error("API返回数据格式不正确");
-        return fallbackQueryWhois(domain); // 使用备用服务
-      }
+      // 直接返回API结果
+      return {
+        registrar: data.registrar,
+        creationDate: data.creationDate,
+        expiryDate: data.expiryDate,
+        lastUpdated: data.lastUpdated,
+        status: data.status,
+        nameServers: data.nameServers,
+        registrant: data.registrant,
+        registrantEmail: data.registrantEmail,
+        registrantPhone: data.registrantPhone,
+        rawData: data.rawData
+      };
     } catch (error) {
       console.error("解析API响应失败:", error);
       return fallbackQueryWhois(domain); // 使用备用服务
