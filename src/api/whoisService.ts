@@ -46,10 +46,17 @@ export const whoisServers: Record<string, string> = {
   "in": "whois.registry.in",
   "nl": "whois.domain-registry.nl",
   "it": "whois.nic.it",
-  "se": "whois.iis.se",
+  "se": "whois.iis.se", // 确保.se使用正确的服务器地址
   "no": "whois.norid.no",
   // 可以根据需要添加更多顶级域名服务器
-  "bb": "whois.nic.bb"  // 例如: 添加巴巴多斯域名服务器
+  "bb": "whois.nic.bb",  // 例如: 添加巴巴多斯域名服务器
+  "fi": "whois.fi",      // 添加芬兰域名服务器
+  "dk": "whois.dk-hostmaster.dk", // 添加丹麦域名服务器
+  "nz": "whois.irs.net.nz",  // 添加新西兰域名服务器
+  "pl": "whois.dns.pl",  // 添加波兰域名服务器
+  "be": "whois.dns.be",  // 添加比利时域名服务器
+  "br": "whois.registro.br", // 添加巴西域名服务器
+  "eu": "whois.eu"       // 添加欧盟域名服务器
 };
 
 /**
@@ -76,7 +83,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     console.log("请求API URL:", apiUrl);
     
-    // 设置5秒的超时
+    // 设置15秒的超时
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
     
@@ -98,9 +105,19 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       console.error(`API请求失败: ${response.status} ${response.statusText}`);
       const errorText = await response.text();
       console.error("错误响应:", errorText);
+      
+      // 尝试解析错误响应，如果是JSON
+      let parsedError = "";
+      try {
+        const errorJson = JSON.parse(errorText);
+        parsedError = errorJson.error || errorJson.message || errorText;
+      } catch (e) {
+        parsedError = errorText;
+      }
+      
       return { 
         error: `API请求失败: ${response.status}`,
-        rawData: errorText
+        rawData: parsedError
       };
     }
     
@@ -112,7 +129,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         console.error("API返回错误:", data.error);
         return {
           error: data.error,
-          rawData: data.message || "无错误详情"
+          rawData: data.message || data.rawData || "无错误详情"
         };
       }
       

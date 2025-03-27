@@ -1,4 +1,3 @@
-
 // Serverless function to handle WHOIS queries
 const net = require('net');
 
@@ -32,7 +31,14 @@ const whoisServers = {
   "it": "whois.nic.it",
   "se": "whois.iis.se",
   "no": "whois.norid.no",
-  "bb": "whois.nic.bb"  // 例如：添加巴巴多斯域名服务器
+  "bb": "whois.nic.bb",
+  "fi": "whois.fi",
+  "dk": "whois.dk-hostmaster.dk",
+  "nz": "whois.irs.net.nz",
+  "pl": "whois.dns.pl",
+  "be": "whois.dns.be",
+  "br": "whois.registro.br",
+  "eu": "whois.eu"
 };
 
 // Query WHOIS server via socket connection

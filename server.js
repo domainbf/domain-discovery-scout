@@ -39,9 +39,16 @@ const whoisServers = {
   "in": "whois.registry.in",
   "nl": "whois.domain-registry.nl",
   "it": "whois.nic.it",
-  "se": "whois.iis.se",
+  "se": "whois.iis.se", // 确保.se使用正确的服务器地址
   "no": "whois.norid.no",
-  "bb": "whois.nic.bb"  // 例如：添加巴巴多斯域名服务器
+  "bb": "whois.nic.bb",  // 例如：添加巴巴多斯域名服务器
+  "fi": "whois.fi",      // 添加芬兰域名服务器
+  "dk": "whois.dk-hostmaster.dk", // 添加丹麦域名服务器
+  "nz": "whois.irs.net.nz",  // 添加新西兰域名服务器
+  "pl": "whois.dns.pl",  // 添加波兰域名服务器
+  "be": "whois.dns.be",  // 添加比利时域名服务器
+  "br": "whois.registro.br", // 添加巴西域名服务器
+  "eu": "whois.eu"       // 添加欧盟域名服务器
 };
 
 // 通过Socket连接查询WHOIS服务器
