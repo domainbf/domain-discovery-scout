@@ -1,7 +1,6 @@
-
 // 备用WHOIS查询服务 - 使用公共API
 
-import { WhoisResult } from './whoisService';
+import { WhoisResult, Contact } from './whoisService';
 
 // 使用公共WHOIS API的备用查询服务
 export async function fallbackQueryWhois(domain: string): Promise<WhoisResult> {
@@ -35,16 +34,20 @@ export async function fallbackQueryWhois(domain: string): Promise<WhoisResult> {
     const data = await response.json();
     
     // 解析RDAP响应，提取WHOIS类似信息
+    const registrant: Contact = {
+      name: extractEntityName(data, 'registrant'),
+      email: [extractEntityEmail(data, 'registrant')].filter(Boolean) as string[],
+      phone: [extractEntityPhone(data, 'registrant')].filter(Boolean) as string[],
+    };
+
     return {
       registrar: extractRegistrarFromRDAP(data),
       creationDate: extractDateFromEvents(data, 'registration'),
       expiryDate: extractDateFromEvents(data, 'expiration'),
       lastUpdated: extractDateFromEvents(data, 'last changed'),
       status: extractStatus(data),
-      nameServers: extractNameServers(data),
-      registrant: extractEntityName(data, 'registrant'),
-      registrantEmail: extractEntityEmail(data, 'registrant'),
-      registrantPhone: extractEntityPhone(data, 'registrant'),
+      nameservers: extractNameServers(data),
+      registrant: registrant,
       rawData: JSON.stringify(data, null, 2)
     };
   } catch (error) {
@@ -93,7 +96,7 @@ async function queryAltWhoisAPI(domain: string): Promise<WhoisResult> {
     expiryDate: null,
     registrar: null,
     status: null,
-    nameServers: null,
+    nameservers: null,
     rawData: JSON.stringify(data, null, 2)
   };
 }
@@ -125,19 +128,19 @@ function extractDateFromEvents(data: any, eventType: string): string | undefined
 }
 
 // 从RDAP响应中提取状态
-function extractStatus(data: any): string | undefined {
+function extractStatus(data: any): string[] {
   if (data.status && Array.isArray(data.status)) {
-    return data.status.join(', ');
+    return data.status;
   }
-  return data.status || undefined;
+  return [];
 }
 
 // 从RDAP响应中提取域名服务器
-function extractNameServers(data: any): string[] | undefined {
+function extractNameServers(data: any): string[] {
   if (data.nameservers && Array.isArray(data.nameservers)) {
     return data.nameservers.map((ns: any) => ns.ldhName || ns);
   }
-  return undefined;
+  return [];
 }
 
 // 从RDAP实体中提取名称

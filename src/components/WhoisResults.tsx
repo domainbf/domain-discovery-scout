@@ -40,9 +40,8 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
     
     try {
       const date = new Date(dateString);
-      // Check if the date is valid
       if (isNaN(date.getTime())) {
-        return dateString; // Return original if invalid date
+        return dateString;
       }
       return new Intl.DateTimeFormat('zh-CN', {
         year: 'numeric',
@@ -52,7 +51,7 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
         minute: '2-digit'
       }).format(date);
     } catch (e) {
-      return dateString; // Return original if parsing fails
+      return dateString;
     }
   };
 
@@ -103,42 +102,46 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
           </div>
           
           {data.registrant && (
-            <div className="flex items-start">
-              <div className="w-1/3 text-gray-500 font-medium">
-                <div className="flex items-center">
-                  <User className="h-4 w-4 mr-1" />
-                  注册人:
+            <>
+              {data.registrant.name && (
+                <div className="flex items-start">
+                  <div className="w-1/3 text-gray-500 font-medium">
+                    <div className="flex items-center">
+                      <User className="h-4 w-4 mr-1" />
+                      注册人:
+                    </div>
+                  </div>
+                  <div className="w-2/3">{data.registrant.name}</div>
                 </div>
-              </div>
-              <div className="w-2/3">{data.registrant}</div>
-            </div>
+              )}
+              
+              {data.registrant.email && data.registrant.email[0] && (
+                <div className="flex items-start">
+                  <div className="w-1/3 text-gray-500 font-medium">
+                    <div className="flex items-center">
+                      <Mail className="h-4 w-4 mr-1" />
+                      联系邮箱:
+                    </div>
+                  </div>
+                  <div className="w-2/3">{data.registrant.email[0]}</div>
+                </div>
+              )}
+              
+              {data.registrant.phone && data.registrant.phone[0] && (
+                <div className="flex items-start">
+                  <div className="w-1/3 text-gray-500 font-medium">
+                    <div className="flex items-center">
+                      <Phone className="h-4 w-4 mr-1" />
+                      联系电话:
+                    </div>
+                  </div>
+                  <div className="w-2/3">{data.registrant.phone[0]}</div>
+                </div>
+              )}
+            </>
           )}
           
-          {data.registrantEmail && (
-            <div className="flex items-start">
-              <div className="w-1/3 text-gray-500 font-medium">
-                <div className="flex items-center">
-                  <Mail className="h-4 w-4 mr-1" />
-                  联系邮箱:
-                </div>
-              </div>
-              <div className="w-2/3">{data.registrantEmail}</div>
-            </div>
-          )}
-          
-          {data.registrantPhone && (
-            <div className="flex items-start">
-              <div className="w-1/3 text-gray-500 font-medium">
-                <div className="flex items-center">
-                  <Phone className="h-4 w-4 mr-1" />
-                  联系电话:
-                </div>
-              </div>
-              <div className="w-2/3">{data.registrantPhone}</div>
-            </div>
-          )}
-          
-          {data.nameServers && data.nameServers.length > 0 && (
+          {data.nameservers && data.nameservers.length > 0 && (
             <div className="flex items-start">
               <div className="w-1/3 text-gray-500 font-medium">
                 <div className="flex items-center">
@@ -148,7 +151,7 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
               </div>
               <div className="w-2/3">
                 <ul className="list-disc list-inside space-y-1">
-                  {data.nameServers.map((ns, index) => (
+                  {data.nameservers.map((ns, index) => (
                     <li key={index} className="text-gray-700">{ns}</li>
                   ))}
                 </ul>
@@ -156,21 +159,21 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
             </div>
           )}
           
-          <div className="flex items-start">
-            <div className="w-1/3 text-gray-500 font-medium">状态:</div>
-            <div className="w-2/3">
-              {data.status ? (
+          {data.status && (
+            <div className="flex items-start">
+              <div className="w-1/3 text-gray-500 font-medium">状态:</div>
+              <div className="w-2/3">
                 <div className="flex flex-wrap gap-1">
-                  {typeof data.status === 'string' && data.status.split(/[,\s;]+/).filter(Boolean).map((status, index) => (
+                  {(Array.isArray(data.status) ? data.status : [data.status]).map((status, index) => (
                     <span key={index} className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                       <Shield className="h-3 w-3 mr-1" />
                       {status}
                     </span>
                   ))}
                 </div>
-              ) : "未知"}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
       
