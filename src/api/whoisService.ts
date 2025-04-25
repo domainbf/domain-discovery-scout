@@ -1,24 +1,49 @@
 
-// WHOIS 查询服务 - 调用本地 API 获取数据
-import { fallbackQueryWhois } from './fallbackWhoisService';
+// WHOIS 查询服务 - 使用重构的查询系统
 
-export interface WhoisResult {
-  registrar?: string;
-  creationDate?: string;
-  expiryDate?: string;
-  status?: string;
-  error?: string;
-  nameServers?: string[];
-  registrant?: string;
-  registrantEmail?: string;
-  registrantPhone?: string;
-  admin?: string;
-  tech?: string;
-  lastUpdated?: string;
-  rawData?: string; // 原始WHOIS数据
+// Import the types from our library
+export interface Contact {
+  name?: string;
+  org?: string;
+  email?: string[];
+  phone?: string[];
+  address?: string;
 }
 
-// 支持查询的顶级域名列表及其对应的WHOIS服务器
+export interface DNSData {
+  a?: string[];
+  mx?: Array<{exchange: string, priority: number}>;
+  txt?: string[];
+  ns?: string[];
+  caa?: any[];
+  dnssec?: boolean;
+}
+
+export interface WhoisResult {
+  domain?: string;
+  registrar?: string;
+  nameservers?: string[];
+  dnssec?: boolean;
+  status?: string[];
+  created?: string;
+  updated?: string;
+  expires?: string;
+  dns_records?: DNSData;
+  registrant?: Contact;
+  admin?: Contact;
+  tech?: Contact;
+  abuse?: Contact;
+  source?: string;
+  error?: string;
+  rawData?: string;
+  creationDate?: string; // For backward compatibility
+  expiryDate?: string;   // For backward compatibility
+  lastUpdated?: string;  // For backward compatibility
+  registrantEmail?: string; // For backward compatibility
+  registrantPhone?: string; // For backward compatibility
+}
+
+// Support list of whois servers (synchronized with lib/lookup.js)
 export const whoisServers: Record<string, string> = {
   "com": "whois.verisign-grs.com",
   "net": "whois.verisign-grs.com",
@@ -46,79 +71,67 @@ export const whoisServers: Record<string, string> = {
   "in": "whois.registry.in",
   "nl": "whois.domain-registry.nl",
   "it": "whois.nic.it",
-  "se": "whois.iis.se", // 确保.se使用正确的服务器地址
+  "se": "whois.iis.se",
   "no": "whois.norid.no",
-  // 可以根据需要添加更多顶级域名服务器
-  "bb": "whois.nic.bb",  // 例如: 添加巴巴多斯域名服务器
-  "fi": "whois.fi",      // 添加芬兰域名服务器
-  "dk": "whois.dk-hostmaster.dk", // 添加丹麦域名服务器
-  "nz": "whois.irs.net.nz",  // 添加新西兰域名服务器
-  "pl": "whois.dns.pl",  // 添加波兰域名服务器
-  "be": "whois.dns.be",  // 添加比利时域名服务器
-  "br": "whois.registro.br", // 添加巴西域名服务器
-  "eu": "whois.eu"       // 添加欧盟域名服务器
+  "bb": "whois.nic.bb",
+  "fi": "whois.fi",
+  "dk": "whois.dk-hostmaster.dk",
+  "nz": "whois.irs.net.nz",
+  "pl": "whois.dns.pl",
+  "be": "whois.dns.be",
+  "br": "whois.registro.br",
+  "eu": "whois.eu"
 };
 
 /**
- * 查询域名的WHOIS信息
- * 使用本地Express服务器通过Socket连接到官方WHOIS服务器
+ * Query domain information using the unified domain-info API
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
-    // 验证域名格式
+    // Validate domain format
     const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
     if (!domainRegex.test(domain)) {
-      return { error: "无效的域名格式" };
+      return { error: "Invalid domain format" };
     }
 
-    const tld = domain.split('.').pop()?.toLowerCase() || "";
-    if (!whoisServers[tld]) {
-      return { error: `不支持的顶级域名: .${tld}，请在whoisServers对象中添加对应的WHOIS服务器` };
-    }
-    
-    console.log(`正在查询 ${domain} 的WHOIS信息...`);
+    console.log(`Querying information for ${domain}...`);
 
-    // 两种API方式:
-    // 1. 本地Express服务器 (优先)
-    // 2. Vercel无服务器API (备用)
-    // 我们会先尝试本地API，如果失败再尝试无服务器API
-
-    // 尝试本地API
+    // First try the new domain-info API
     try {
-      const result = await queryLocalApi(domain);
+      const result = await queryDomainInfoApi(domain);
       if (!result.error) {
-        return result;
+        return convertToLegacyFormat(result);
       }
-      console.warn(`本地API查询失败: ${result.error}`);
-      // 如果本地API失败，尝试无服务器API
-      return await queryServerlessApi(domain);
+      console.warn(`domain-info API query failed: ${result.error}`);
+      // If the primary API fails, try the fallback APIs
+      return await queryFallbackApis(domain);
     } catch (error) {
-      console.warn(`本地API查询错误: ${error}`);
-      // 如果本地API出错，尝试无服务器API
-      return await queryServerlessApi(domain);
+      console.warn(`domain-info API error: ${error}`);
+      // If the primary API errors, try the fallback APIs
+      return await queryFallbackApis(domain);
     }
   } catch (error) {
-    console.error("WHOIS查询错误:", error);
+    console.error("Domain lookup error:", error);
     return { 
-      error: `查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Query error: ${error instanceof Error ? error.message : String(error)}`,
       rawData: String(error)
     };
   }
 }
 
-// 使用本地Express服务器的API
-async function queryLocalApi(domain: string): Promise<WhoisResult> {
-  // 设置API URL为相对路径，这样会先尝试本地服务器
-  const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
+// Query the new unified domain-info API
+async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
+  // Use the new API endpoint
+  const apiUrl = `/api/domain-info?domain=${encodeURIComponent(domain)}`;
   
-  console.log("请求本地API URL:", apiUrl);
+  console.log("Requesting domain-info API:", apiUrl);
   
-  // 设置20秒的超时，考虑到某些WHOIS服务器可能较慢
+  // Set timeout to 20 seconds
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20000);
   
   try {
-    // 调用API
+    // Call API
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
@@ -126,18 +139,18 @@ async function queryLocalApi(domain: string): Promise<WhoisResult> {
         'Content-Type': 'application/json'
       },
       signal: controller.signal,
-      cache: 'no-cache' // 禁用缓存
+      cache: 'no-cache'
     });
     
     clearTimeout(timeoutId);
     
-    // 确保响应是有效的
+    // Check if response is valid
     if (!response.ok) {
-      console.error(`本地API请求失败: ${response.status} ${response.statusText}`);
+      console.error(`domain-info API request failed: ${response.status} ${response.statusText}`);
       const errorText = await response.text();
-      console.error("错误响应:", errorText);
+      console.error("Error response:", errorText);
       
-      // 尝试解析错误响应，如果是JSON
+      // Try to parse error response if it's JSON
       let parsedError = "";
       try {
         const errorJson = JSON.parse(errorText);
@@ -147,7 +160,7 @@ async function queryLocalApi(domain: string): Promise<WhoisResult> {
       }
       
       return { 
-        error: `本地API请求失败: ${response.status}`,
+        error: `API request failed: ${response.status}`,
         rawData: parsedError
       };
     }
@@ -155,137 +168,238 @@ async function queryLocalApi(domain: string): Promise<WhoisResult> {
     try {
       const data = await response.json();
       
-      // 如果API返回了错误信息
+      // If API returned an error
       if (data.error) {
-        console.error("本地API返回错误:", data.error);
+        console.error("domain-info API returned error:", data.error);
         return {
           error: data.error,
-          rawData: data.message || data.rawData || "无错误详情"
+          rawData: data.message || data.rawData || "No error details"
         };
       }
       
-      // 直接返回API结果
-      return {
-        registrar: data.registrar,
-        creationDate: data.creationDate,
-        expiryDate: data.expiryDate,
-        lastUpdated: data.lastUpdated,
-        status: data.status,
-        nameServers: data.nameServers,
-        registrant: data.registrant,
-        registrantEmail: data.registrantEmail,
-        registrantPhone: data.registrantPhone,
-        rawData: data.rawData
-      };
+      // Return API result directly
+      return data;
     } catch (error) {
-      console.error("解析本地API响应失败:", error);
+      console.error("Failed to parse domain-info API response:", error);
       return { 
-        error: `解析本地API响应失败: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Failed to parse API response: ${error instanceof Error ? error.message : String(error)}`,
         rawData: String(error)
       };
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      console.error("本地API查询超时");
+      console.error("domain-info API query timeout");
       return { 
-        error: "本地查询超时，尝试备用API",
-        rawData: "请求超时"
+        error: "Query timeout, trying fallback APIs",
+        rawData: "Request timeout"
       };
     }
     
-    console.error("本地API查询错误:", error);
+    console.error("domain-info API query error:", error);
     return { 
-      error: `本地查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Query error: ${error instanceof Error ? error.message : String(error)}`,
       rawData: String(error)
     };
   }
 }
 
-// 使用Vercel无服务器API
-async function queryServerlessApi(domain: string): Promise<WhoisResult> {
+// Try fallback APIs in sequence
+async function queryFallbackApis(domain: string): Promise<WhoisResult> {
+  console.log("Trying fallback APIs...");
+  
+  // First try the original whois API
+  try {
+    const result = await queryOriginalWhoisApi(domain);
+    if (!result.error) {
+      return result;
+    }
+    console.warn(`Original WHOIS API failed: ${result.error}`);
+  } catch (error) {
+    console.warn(`Original WHOIS API error: ${error}`);
+  }
+  
+  // Then try the direct WHOIS API
   const tld = domain.split('.').pop()?.toLowerCase() || "";
   const whoisServer = whoisServers[tld];
   
-  console.log(`尝试使用无服务器API查询 ${domain}，WHOIS服务器: ${whoisServer}`);
+  if (whoisServer) {
+    try {
+      console.log(`Trying direct WHOIS API with server ${whoisServer}...`);
+      return await queryDirectWhoisApi(domain, whoisServer);
+    } catch (error) {
+      console.warn(`Direct WHOIS API error: ${error}`);
+    }
+  }
   
-  // 设置API URL为/api/whois-direct（新API路径）
-  const apiUrl = `/api/whois-direct?domain=${encodeURIComponent(domain)}&server=${encodeURIComponent(whoisServer)}`;
+  // Finally try the RDAP fallback
+  try {
+    console.log("Trying RDAP fallback...");
+    return await queryRdapFallback(domain);
+  } catch (error) {
+    console.error("All fallback attempts failed:", error);
+    return {
+      error: "All lookup methods failed",
+      rawData: String(error)
+    };
+  }
+}
+
+// Original WHOIS API
+async function queryOriginalWhoisApi(domain: string): Promise<WhoisResult> {
+  const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
   
-  // 设置20秒的超时
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   
   try {
-    // 调用API
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Accept': 'application/json'
       },
       signal: controller.signal,
-      cache: 'no-cache' // 禁用缓存
+      cache: 'no-cache'
     });
     
     clearTimeout(timeoutId);
     
-    // 确保响应是有效的
     if (!response.ok) {
-      console.error(`无服务器API请求失败: ${response.status} ${response.statusText}`);
-      const errorText = await response.text();
-      console.error("错误响应:", errorText);
-      
-      return { 
-        error: `无服务器API请求失败: ${response.status}`,
-        rawData: errorText
+      return {
+        error: `Original WHOIS API request failed: ${response.status}`,
+        rawData: await response.text()
       };
     }
     
-    try {
-      const data = await response.json();
-      
-      // 如果API返回了错误信息
-      if (data.error) {
-        console.error("无服务器API返回错误:", data.error);
-        return {
-          error: data.error,
-          rawData: data.message || "无错误详情"
-        };
-      }
-      
-      // 直接返回API结果
+    const data = await response.json();
+    
+    if (data.error) {
       return {
-        registrar: data.registrar,
-        creationDate: data.creationDate,
-        expiryDate: data.expiryDate,
-        lastUpdated: data.lastUpdated,
-        status: data.status,
-        nameServers: data.nameServers,
-        registrant: data.registrant,
-        registrantEmail: data.registrantEmail,
-        registrantPhone: data.registrantPhone,
-        rawData: data.rawData
-      };
-    } catch (error) {
-      console.error("解析无服务器API响应失败:", error);
-      return { 
-        error: `解析无服务器API响应失败: ${error instanceof Error ? error.message : String(error)}`,
-        rawData: String(error)
+        error: data.error,
+        rawData: data.message || "No error details"
       };
     }
+    
+    return data;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      console.error("无服务器API查询超时");
-      return { 
-        error: "无服务器查询超时，请稍后再试",
-        rawData: "请求超时"
+      return { error: "Original WHOIS API timeout", rawData: "Request timeout" };
+    }
+    throw error;
+  }
+}
+
+// Direct WHOIS API
+async function queryDirectWhoisApi(domain: string, server: string): Promise<WhoisResult> {
+  const apiUrl = `/api/whois-direct?domain=${encodeURIComponent(domain)}&server=${encodeURIComponent(server)}`;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      },
+      signal: controller.signal,
+      cache: 'no-cache'
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      return {
+        error: `Direct WHOIS API request failed: ${response.status}`,
+        rawData: await response.text()
       };
     }
     
-    console.error("无服务器API查询错误:", error);
-    return { 
-      error: `无服务器查询错误: ${error instanceof Error ? error.message : String(error)}`,
-      rawData: String(error)
-    };
+    const data = await response.json();
+    
+    if (data.error) {
+      return {
+        error: data.error,
+        rawData: data.message || "No error details"
+      };
+    }
+    
+    return data;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { error: "Direct WHOIS API timeout", rawData: "Request timeout" };
+    }
+    throw error;
   }
+}
+
+// RDAP fallback
+async function queryRdapFallback(domain: string): Promise<WhoisResult> {
+  try {
+    const apiUrl = `https://rdap.org/domain/${encodeURIComponent(domain)}`;
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      },
+      cache: 'no-cache'
+    });
+    
+    if (!response.ok) {
+      return {
+        error: `RDAP request failed: ${response.status}`,
+        rawData: await response.text()
+      };
+    }
+    
+    const data = await response.json();
+    
+    // Parse RDAP response
+    const result: WhoisResult = {
+      domain,
+      rawData: JSON.stringify(data, null, 2),
+      source: 'rdap'
+    };
+    
+    // Extract data from RDAP response
+    if (data.events) {
+      for (const event of data.events) {
+        if (event.eventAction === 'registration') {
+          result.created = event.eventDate;
+          result.creationDate = event.eventDate;
+        } else if (event.eventAction === 'expiration') {
+          result.expires = event.eventDate;
+          result.expiryDate = event.eventDate;
+        } else if (event.eventAction === 'last changed') {
+          result.updated = event.eventDate;
+          result.lastUpdated = event.eventDate;
+        }
+      }
+    }
+    
+    if (data.status) {
+      result.status = Array.isArray(data.status) ? data.status : [data.status];
+    }
+    
+    if (data.nameservers) {
+      result.nameservers = data.nameservers.map((ns: any) => ns.ldhName || ns);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error("RDAP fallback error:", error);
+    throw error;
+  }
+}
+
+// Convert the new domain-info API format to the legacy WhoisResult format for backward compatibility
+function convertToLegacyFormat(info: WhoisResult): WhoisResult {
+  return {
+    ...info,
+    creationDate: info.created,
+    expiryDate: info.expires,
+    lastUpdated: info.updated,
+    registrantEmail: info.registrant?.email?.[0],
+    registrantPhone: info.registrant?.phone?.[0]
+  };
 }
