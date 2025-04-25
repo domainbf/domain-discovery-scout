@@ -147,14 +147,26 @@ async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     // Check if response is valid
     if (!response.ok) {
       console.error(`domain-info API request failed: ${response.status} ${response.statusText}`);
-      const errorText = await response.text();
-      console.error("Error response:", errorText);
+      let errorText = "";
+      
+      try {
+        // Try to get the response as text first
+        errorText = await response.text();
+        console.error("Error response:", errorText);
+      } catch (e) {
+        errorText = "Could not read response";
+      }
       
       // Try to parse error response if it's JSON
       let parsedError = "";
       try {
-        const errorJson = JSON.parse(errorText);
-        parsedError = errorJson.error || errorJson.message || errorText;
+        // Only attempt to parse if the text looks like JSON
+        if (errorText.trim().startsWith('{') || errorText.trim().startsWith('[')) {
+          const errorJson = JSON.parse(errorText);
+          parsedError = errorJson.error || errorJson.message || errorText;
+        } else {
+          parsedError = errorText;
+        }
       } catch (e) {
         parsedError = errorText;
       }
@@ -166,19 +178,34 @@ async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     }
     
     try {
-      const data = await response.json();
+      // Get response as text first
+      const responseText = await response.text();
       
-      // If API returned an error
-      if (data.error) {
-        console.error("domain-info API returned error:", data.error);
+      // Debug log to check the response format
+      console.debug(`Raw API response (first 200 chars): ${responseText.substring(0, 200)}...`);
+      
+      // Only try to parse if it looks like JSON
+      if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        const data = JSON.parse(responseText);
+        
+        // If API returned an error
+        if (data.error) {
+          console.error("domain-info API returned error:", data.error);
+          return {
+            error: data.error,
+            rawData: data.message || data.rawData || "No error details"
+          };
+        }
+        
+        // Return API result directly
+        return data;
+      } else {
+        // Not JSON, return as raw data
         return {
-          error: data.error,
-          rawData: data.message || data.rawData || "No error details"
+          error: "Invalid API response format (not JSON)",
+          rawData: responseText
         };
       }
-      
-      // Return API result directly
-      return data;
     } catch (error) {
       console.error("Failed to parse domain-info API response:", error);
       return { 

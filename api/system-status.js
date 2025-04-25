@@ -21,13 +21,49 @@ module.exports = async (req, res) => {
     // Check domain-info API
     let domainInfoStatus = { status: 'unknown', latency: null };
     const domainInfoStart = Date.now();
+    let domainInfoResponseText = null;
+    
     try {
-      const domainInfoResponse = await fetch(`${req.headers.host.startsWith('localhost') ? 'http' : 'https'}://${req.headers.host}/api/domain-info?domain=example.com`);
-      domainInfoStatus = {
-        status: domainInfoResponse.ok ? 'online' : 'error',
-        latency: Date.now() - domainInfoStart,
-        statusCode: domainInfoResponse.status
-      };
+      const host = req.headers.host || 'localhost';
+      const protocol = host.startsWith('localhost') ? 'http' : 'https';
+      const domainInfoResponse = await fetch(`${protocol}://${host}/api/domain-info?domain=example.com`);
+      
+      try {
+        // Get response as text for debugging
+        domainInfoResponseText = await domainInfoResponse.text();
+        
+        // Try to parse as JSON if response looks like JSON
+        if (domainInfoResponseText.trim().startsWith('{') || domainInfoResponseText.trim().startsWith('[')) {
+          const responseJson = JSON.parse(domainInfoResponseText);
+          domainInfoStatus = {
+            status: domainInfoResponse.ok ? 'online' : 'error',
+            latency: Date.now() - domainInfoStart,
+            statusCode: domainInfoResponse.status,
+            responseType: 'json'
+          };
+        } else {
+          // Not valid JSON
+          domainInfoStatus = {
+            status: 'error',
+            latency: Date.now() - domainInfoStart,
+            statusCode: domainInfoResponse.status,
+            responseType: 'text',
+            responsePreview: domainInfoResponseText.substring(0, 100) + (domainInfoResponseText.length > 100 ? '...' : '')
+          };
+        }
+      } catch (parseError) {
+        // JSON parse error
+        domainInfoStatus = {
+          status: 'parse_error',
+          latency: Date.now() - domainInfoStart,
+          statusCode: domainInfoResponse.status,
+          error: parseError.message,
+          responseType: 'invalid',
+          responsePreview: domainInfoResponseText ? 
+            (domainInfoResponseText.substring(0, 100) + (domainInfoResponseText.length > 100 ? '...' : '')) : 
+            'Empty response'
+        };
+      }
     } catch (error) {
       domainInfoStatus = {
         status: 'offline',
@@ -57,7 +93,7 @@ module.exports = async (req, res) => {
     // Return overall system status
     return res.status(200).json({
       timestamp: new Date().toISOString(),
-      version: '2.0.0',
+      version: '2.1.0',
       services: {
         domainInfo: domainInfoStatus,
         rdap: rdapStatus

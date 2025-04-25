@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import DomainSearch from '@/components/DomainSearch';
 import WhoisResults from '@/components/WhoisResults';
@@ -74,12 +73,8 @@ const Index = () => {
           variant: "destructive",
         });
         
-        // 如果主API返回错误，尝试使用备用API
+        // 如果主API返回错误，尝试使用备用API，但不显示toast提示
         console.log("主API返回错误，切换到备用API...", result.error);
-        toast({
-          title: "切换到备用API",
-          description: "主API无法使用，正在使用备用服务...",
-        });
         
         // 记录之前的错误详情
         setApiErrorDetails(result.error);
@@ -91,7 +86,7 @@ const Index = () => {
           setWhoisData(fallbackResult);
           console.log(`成功使用备用API获取域名 ${domain} 的WHOIS信息`);
           toast({
-            title: "通过备用服务查询成功",
+            title: "查询成功",
             description: `已获取 ${domain} 的 WHOIS 信息`,
           });
         }
