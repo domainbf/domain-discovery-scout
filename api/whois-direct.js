@@ -176,13 +176,17 @@ module.exports = async (req, res) => {
       return res.status(200).json(parsedResult);
     } catch (serverError) {
       console.error(`无服务器函数: 连接到WHOIS服务器 ${server} 失败:`, serverError);
-      return res.status(500).json({
+      
+      // 返回更详细的错误信息和状态码400而非500，因为这是客户端请求的问题（无法连接到指定的WHOIS服务器）
+      return res.status(400).json({
         error: `连接到WHOIS服务器失败: ${serverError.message}`,
         message: `无法连接到 ${server}，请确认该服务器是否可用。详细错误: ${serverError.toString()}`
       });
     }
   } catch (error) {
     console.error('无服务器函数: WHOIS查询错误:', error);
+    
+    // 返回更清晰的错误消息
     return res.status(500).json({
       error: `查询出错: ${error.message}`,
       message: error.toString()

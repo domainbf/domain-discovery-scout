@@ -335,9 +335,25 @@ async function queryDirectWhoisApi(domain: string, server: string): Promise<Whoi
     clearTimeout(timeoutId);
     
     if (!response.ok) {
+      const responseText = await response.text();
+      let errorMessage = "Direct WHOIS API request failed";
+      
+      try {
+        // Try to parse as JSON to extract detailed error
+        const errorData = JSON.parse(responseText);
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch (parseError) {
+        // If can't parse JSON, use the text response
+        if (responseText) errorMessage += `: ${responseText}`;
+      }
+      
       return {
-        error: `Direct WHOIS API request failed: ${response.status}`,
-        rawData: await response.text()
+        error: errorMessage,
+        rawData: responseText
       };
     }
     

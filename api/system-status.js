@@ -26,7 +26,8 @@ module.exports = async (req, res) => {
     try {
       const host = req.headers.host || 'localhost';
       const protocol = host.startsWith('localhost') ? 'http' : 'https';
-      const domainInfoResponse = await fetch(`${protocol}://${host}/api/domain-info?domain=example.com`);
+      const testDomain = "example.com"; // Use a reliable domain for testing
+      const domainInfoResponse = await fetch(`${protocol}://${host}/api/domain-info?domain=${testDomain}`);
       
       try {
         // Get response as text for debugging
@@ -39,7 +40,8 @@ module.exports = async (req, res) => {
             status: domainInfoResponse.ok ? 'online' : 'error',
             latency: Date.now() - domainInfoStart,
             statusCode: domainInfoResponse.status,
-            responseType: 'json'
+            responseType: 'json',
+            details: responseJson.error || null
           };
         } else {
           // Not valid JSON
@@ -72,6 +74,51 @@ module.exports = async (req, res) => {
       };
     }
 
+    // Check Direct WHOIS service with a known server
+    let directWhoisStatus = { status: 'unknown', latency: null };
+    const directWhoisStart = Date.now();
+    try {
+      const host = req.headers.host || 'localhost';
+      const protocol = host.startsWith('localhost') ? 'http' : 'https';
+      const testDomain = "example.com";
+      const testServer = "whois.verisign-grs.com";
+      
+      const directWhoisResponse = await fetch(
+        `${protocol}://${host}/api/whois-direct?domain=${testDomain}&server=${testServer}`,
+        { timeout: 10000 }
+      );
+      
+      directWhoisStatus = {
+        status: directWhoisResponse.ok ? 'online' : 'error',
+        latency: Date.now() - directWhoisStart,
+        statusCode: directWhoisResponse.status
+      };
+      
+      if (!directWhoisResponse.ok) {
+        try {
+          const errorText = await directWhoisResponse.text();
+          let errorDetails = errorText;
+          
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorDetails = errorJson.error || errorJson.message || errorText;
+          } catch (e) {
+            // Not JSON, use text
+          }
+          
+          directWhoisStatus.errorDetails = errorDetails;
+        } catch (textError) {
+          directWhoisStatus.errorDetails = "Could not read error response";
+        }
+      }
+    } catch (error) {
+      directWhoisStatus = {
+        status: 'offline',
+        latency: Date.now() - directWhoisStart,
+        error: error.message
+      };
+    }
+
     // Check RDAP service
     let rdapStatus = { status: 'unknown', latency: null };
     const rdapStart = Date.now();
@@ -90,15 +137,46 @@ module.exports = async (req, res) => {
       };
     }
 
+    // Check original WHOIS API
+    let originalWhoisStatus = { status: 'unknown', latency: null };
+    const originalWhoisStart = Date.now();
+    try {
+      const host = req.headers.host || 'localhost';
+      const protocol = host.startsWith('localhost') ? 'http' : 'https';
+      const testDomain = "example.com";
+      
+      const originalWhoisResponse = await fetch(
+        `${protocol}://${host}/api/whois?domain=${testDomain}`,
+        { timeout: 10000 }
+      );
+      
+      originalWhoisStatus = {
+        status: originalWhoisResponse.ok ? 'online' : 'error',
+        latency: Date.now() - originalWhoisStart,
+        statusCode: originalWhoisResponse.status
+      };
+    } catch (error) {
+      originalWhoisStatus = {
+        status: 'offline',
+        latency: Date.now() - originalWhoisStart,
+        error: error.message
+      };
+    }
+
     // Return overall system status
     return res.status(200).json({
       timestamp: new Date().toISOString(),
-      version: '2.1.0',
+      version: '3.0.0',
       services: {
         domainInfo: domainInfoStatus,
+        directWhois: directWhoisStatus,
+        originalWhois: originalWhoisStatus,
         rdap: rdapStatus
       },
-      overall: domainInfoStatus.status === 'online' || rdapStatus.status === 'online' ? 'operational' : 'degraded'
+      overall: domainInfoStatus.status === 'online' || 
+               directWhoisStatus.status === 'online' || 
+               originalWhoisStatus.status === 'online' || 
+               rdapStatus.status === 'online' ? 'operational' : 'degraded'
     });
   } catch (error) {
     console.error('Status check error:', error);
