@@ -1,0 +1,62 @@
+
+// Local WHOIS servers configuration
+export const whoisServers: Record<string, string> = {
+  "com": "whois.verisign-grs.com",
+  "net": "whois.verisign-grs.com",
+  "org": "whois.pir.org",
+  "cn": "whois.cnnic.cn",
+  "io": "whois.nic.io",
+  "info": "whois.afilias.net",
+  "biz": "whois.neulevel.biz",
+  "mobi": "whois.dotmobiregistry.net",
+  "name": "whois.nic.name",
+  "co": "whois.nic.co",
+  "tv": "whois.nic.tv",
+  "me": "whois.nic.me",
+  "cc": "ccwhois.verisign-grs.com",
+  "us": "whois.nic.us",
+  "de": "whois.denic.de",
+  "uk": "whois.nic.uk",
+  "jp": "whois.jprs.jp",
+  "fr": "whois.nic.fr",
+  "au": "whois.auda.org.au",
+  "ru": "whois.tcinet.ru",
+  "ch": "whois.nic.ch",
+  "es": "whois.nic.es",
+  "ca": "whois.cira.ca",
+  "in": "whois.registry.in",
+  "nl": "whois.domain-registry.nl",
+  "it": "whois.nic.it",
+  "se": "whois.iis.se",
+  "no": "whois.norid.no",
+  "bb": "whois.nic.bb",
+  "fi": "whois.fi",
+  "dk": "whois.dk-hostmaster.dk",
+  "nz": "whois.irs.net.nz",
+  "pl": "whois.dns.pl",
+  "be": "whois.dns.be",
+  "br": "whois.registro.br",
+  "eu": "whois.eu",
+  "app": "whois.nic.google",
+  "dev": "whois.nic.google",
+  "top": "whois.nic.top",
+  "xyz": "whois.nic.xyz",
+  "online": "whois.nic.online",
+  "site": "whois.nic.site",
+  "club": "whois.nic.club"
+};
+
+// RDAP endpoints for different TLDs
+export const rdapEndpoints: Record<string, string> = {
+  "com": "https://rdap.verisign.com/com/v1/",
+  "net": "https://rdap.verisign.com/net/v1/",
+  "org": "https://rdap.publicinterestregistry.org/rdap/",
+  "info": "https://rdap.afilias.net/rdap/",
+  "biz": "https://rdap.bizregistry.net/rdap/",
+  "io": "https://rdap.nic.io/",
+  "app": "https://rdap.nominet.uk/app/",
+  "dev": "https://rdap.nominet.uk/dev/"
+};
+
+// Central RDAP bootstrap service
+export const rdapBootstrap = "https://rdap.org/domain/";

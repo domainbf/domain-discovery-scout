@@ -1,5 +1,7 @@
 
-// WHOIS 查询服务 - 使用重构的查询系统
+// WHOIS 查询服务 - 使用优化的查询系统，优先采用RDAP
+
+import { whoisServers, rdapBootstrap } from '@/utils/whois-servers';
 
 // Import the types from our library
 export interface Contact {
@@ -43,246 +45,70 @@ export interface WhoisResult {
   registrantPhone?: string; // For backward compatibility
 }
 
-// Support list of whois servers (synchronized with lib/lookup.js)
-export const whoisServers: Record<string, string> = {
-  "com": "whois.verisign-grs.com",
-  "net": "whois.verisign-grs.com",
-  "org": "whois.pir.org",
-  "cn": "whois.cnnic.cn",
-  "io": "whois.nic.io",
-  "info": "whois.afilias.net",
-  "biz": "whois.neulevel.biz",
-  "mobi": "whois.dotmobiregistry.net",
-  "name": "whois.nic.name",
-  "co": "whois.nic.co",
-  "tv": "whois.nic.tv",
-  "me": "whois.nic.me",
-  "cc": "ccwhois.verisign-grs.com",
-  "us": "whois.nic.us",
-  "de": "whois.denic.de",
-  "uk": "whois.nic.uk",
-  "jp": "whois.jprs.jp",
-  "fr": "whois.nic.fr",
-  "au": "whois.auda.org.au",
-  "ru": "whois.tcinet.ru",
-  "ch": "whois.nic.ch",
-  "es": "whois.nic.es",
-  "ca": "whois.cira.ca",
-  "in": "whois.registry.in",
-  "nl": "whois.domain-registry.nl",
-  "it": "whois.nic.it",
-  "se": "whois.iis.se",
-  "no": "whois.norid.no",
-  "bb": "whois.nic.bb",
-  "fi": "whois.fi",
-  "dk": "whois.dk-hostmaster.dk",
-  "nz": "whois.irs.net.nz",
-  "pl": "whois.dns.pl",
-  "be": "whois.dns.be",
-  "br": "whois.registro.br",
-  "eu": "whois.eu"
-};
-
 /**
- * Query domain information using the unified domain-info API
+ * Query domain information using prioritized lookup sources
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
     // Validate domain format
     const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
     if (!domainRegex.test(domain)) {
-      return { error: "Invalid domain format" };
+      return { error: "域名格式无效" };
     }
 
     console.log(`Querying information for ${domain}...`);
 
-    // First try the new domain-info API
+    // First try RDAP (preferred method)
     try {
+      console.log("Trying RDAP lookup first...");
+      const rdapResult = await queryRdapInfo(domain);
+      if (!rdapResult.error) {
+        console.log("RDAP lookup successful");
+        return rdapResult;
+      }
+      console.warn(`RDAP lookup failed: ${rdapResult.error}`);
+    } catch (error) {
+      console.warn(`RDAP error: ${error}`);
+    }
+
+    // If RDAP fails, try the domain-info API
+    try {
+      console.log("Trying domain-info API...");
       const result = await queryDomainInfoApi(domain);
       if (!result.error) {
         return convertToLegacyFormat(result);
       }
       console.warn(`domain-info API query failed: ${result.error}`);
-      // If the primary API fails, try the fallback APIs
-      return await queryFallbackApis(domain);
     } catch (error) {
       console.warn(`domain-info API error: ${error}`);
-      // If the primary API errors, try the fallback APIs
-      return await queryFallbackApis(domain);
     }
+
+    // Finally try direct WHOIS
+    return await queryDirectWhois(domain);
   } catch (error) {
     console.error("Domain lookup error:", error);
     return { 
-      error: `Query error: ${error instanceof Error ? error.message : String(error)}`,
+      error: `查询错误: ${error instanceof Error ? error.message : String(error)}`,
       rawData: String(error)
     };
   }
 }
 
-// Query the new unified domain-info API
-async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
-  // Use the new API endpoint
-  const apiUrl = `/api/domain-info?domain=${encodeURIComponent(domain)}`;
+// Query RDAP directly (primary method)
+async function queryRdapInfo(domain: string): Promise<WhoisResult> {
+  const rdapUrl = `${rdapBootstrap}${encodeURIComponent(domain)}`;
   
-  console.log("Requesting domain-info API:", apiUrl);
+  console.log("Requesting RDAP info:", rdapUrl);
   
-  // Set timeout to 20 seconds
+  // Set timeout to 15 seconds
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   
   try {
-    // Call API
-    const response = await fetch(apiUrl, {
+    const response = await fetch(rdapUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      signal: controller.signal,
-      cache: 'no-cache'
-    });
-    
-    clearTimeout(timeoutId);
-    
-    // Check if response is valid
-    if (!response.ok) {
-      console.error(`domain-info API request failed: ${response.status} ${response.statusText}`);
-      let errorText = "";
-      
-      try {
-        // Try to get the response as text first
-        errorText = await response.text();
-        console.error("Error response:", errorText);
-      } catch (e) {
-        errorText = "Could not read response";
-      }
-      
-      // Try to parse error response if it's JSON
-      let parsedError = "";
-      try {
-        // Only attempt to parse if the text looks like JSON
-        if (errorText.trim().startsWith('{') || errorText.trim().startsWith('[')) {
-          const errorJson = JSON.parse(errorText);
-          parsedError = errorJson.error || errorJson.message || errorText;
-        } else {
-          parsedError = errorText;
-        }
-      } catch (e) {
-        parsedError = errorText;
-      }
-      
-      return { 
-        error: `API request failed: ${response.status}`,
-        rawData: parsedError
-      };
-    }
-    
-    try {
-      // Get response as text first
-      const responseText = await response.text();
-      
-      // Debug log to check the response format
-      console.debug(`Raw API response (first 200 chars): ${responseText.substring(0, 200)}...`);
-      
-      // Only try to parse if it looks like JSON
-      if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
-        const data = JSON.parse(responseText);
-        
-        // If API returned an error
-        if (data.error) {
-          console.error("domain-info API returned error:", data.error);
-          return {
-            error: data.error,
-            rawData: data.message || data.rawData || "No error details"
-          };
-        }
-        
-        // Return API result directly
-        return data;
-      } else {
-        // Not JSON, return as raw data
-        return {
-          error: "Invalid API response format (not JSON)",
-          rawData: responseText
-        };
-      }
-    } catch (error) {
-      console.error("Failed to parse domain-info API response:", error);
-      return { 
-        error: `Failed to parse API response: ${error instanceof Error ? error.message : String(error)}`,
-        rawData: String(error)
-      };
-    }
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      console.error("domain-info API query timeout");
-      return { 
-        error: "Query timeout, trying fallback APIs",
-        rawData: "Request timeout"
-      };
-    }
-    
-    console.error("domain-info API query error:", error);
-    return { 
-      error: `Query error: ${error instanceof Error ? error.message : String(error)}`,
-      rawData: String(error)
-    };
-  }
-}
-
-// Try fallback APIs in sequence
-async function queryFallbackApis(domain: string): Promise<WhoisResult> {
-  console.log("Trying fallback APIs...");
-  
-  // First try the original whois API
-  try {
-    const result = await queryOriginalWhoisApi(domain);
-    if (!result.error) {
-      return result;
-    }
-    console.warn(`Original WHOIS API failed: ${result.error}`);
-  } catch (error) {
-    console.warn(`Original WHOIS API error: ${error}`);
-  }
-  
-  // Then try the direct WHOIS API
-  const tld = domain.split('.').pop()?.toLowerCase() || "";
-  const whoisServer = whoisServers[tld];
-  
-  if (whoisServer) {
-    try {
-      console.log(`Trying direct WHOIS API with server ${whoisServer}...`);
-      return await queryDirectWhoisApi(domain, whoisServer);
-    } catch (error) {
-      console.warn(`Direct WHOIS API error: ${error}`);
-    }
-  }
-  
-  // Finally try the RDAP fallback
-  try {
-    console.log("Trying RDAP fallback...");
-    return await queryRdapFallback(domain);
-  } catch (error) {
-    console.error("All fallback attempts failed:", error);
-    return {
-      error: "All lookup methods failed",
-      rawData: String(error)
-    };
-  }
-}
-
-// Original WHOIS API
-async function queryOriginalWhoisApi(domain: string): Promise<WhoisResult> {
-  const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
-  
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
       },
       signal: controller.signal,
       cache: 'no-cache'
@@ -292,105 +118,7 @@ async function queryOriginalWhoisApi(domain: string): Promise<WhoisResult> {
     
     if (!response.ok) {
       return {
-        error: `Original WHOIS API request failed: ${response.status}`,
-        rawData: await response.text()
-      };
-    }
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      return {
-        error: data.error,
-        rawData: data.message || "No error details"
-      };
-    }
-    
-    return data;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      return { error: "Original WHOIS API timeout", rawData: "Request timeout" };
-    }
-    throw error;
-  }
-}
-
-// Direct WHOIS API
-async function queryDirectWhoisApi(domain: string, server: string): Promise<WhoisResult> {
-  const apiUrl = `/api/whois-direct?domain=${encodeURIComponent(domain)}&server=${encodeURIComponent(server)}`;
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
-  
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
-      },
-      signal: controller.signal,
-      cache: 'no-cache'
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      const responseText = await response.text();
-      let errorMessage = "Direct WHOIS API request failed";
-      
-      try {
-        // Try to parse as JSON to extract detailed error
-        const errorData = JSON.parse(responseText);
-        if (errorData.error) {
-          errorMessage = errorData.error;
-        } else if (errorData.message) {
-          errorMessage = errorData.message;
-        }
-      } catch (parseError) {
-        // If can't parse JSON, use the text response
-        if (responseText) errorMessage += `: ${responseText}`;
-      }
-      
-      return {
-        error: errorMessage,
-        rawData: responseText
-      };
-    }
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      return {
-        error: data.error,
-        rawData: data.message || "No error details"
-      };
-    }
-    
-    return data;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      return { error: "Direct WHOIS API timeout", rawData: "Request timeout" };
-    }
-    throw error;
-  }
-}
-
-// RDAP fallback
-async function queryRdapFallback(domain: string): Promise<WhoisResult> {
-  try {
-    const apiUrl = `https://rdap.org/domain/${encodeURIComponent(domain)}`;
-    
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
-      },
-      cache: 'no-cache'
-    });
-    
-    if (!response.ok) {
-      return {
-        error: `RDAP request failed: ${response.status}`,
+        error: `RDAP请求失败: ${response.status}`,
         rawData: await response.text()
       };
     }
@@ -400,11 +128,45 @@ async function queryRdapFallback(domain: string): Promise<WhoisResult> {
     // Parse RDAP response
     const result: WhoisResult = {
       domain,
-      rawData: JSON.stringify(data, null, 2),
-      source: 'rdap'
+      source: 'rdap',
+      rawData: JSON.stringify(data, null, 2)
     };
     
-    // Extract data from RDAP response
+    // Extract basic information
+    if (data.entities) {
+      for (const entity of data.entities) {
+        if (entity.roles && entity.roles.includes('registrar')) {
+          result.registrar = entity.vcardArray?.[1]?.find(arr => arr[0] === 'fn')?.[3] || 
+                             entity.publicIds?.[0]?.identifier ||
+                             entity.handle;
+        }
+        
+        if (entity.roles && entity.roles.includes('registrant')) {
+          const registrant: Contact = {};
+          const vcard = entity.vcardArray?.[1];
+          
+          if (vcard) {
+            for (const entry of vcard) {
+              if (entry[0] === 'fn') registrant.name = entry[3];
+              else if (entry[0] === 'org') registrant.org = entry[3];
+              else if (entry[0] === 'email') {
+                registrant.email = registrant.email || [];
+                registrant.email.push(entry[3]);
+              } else if (entry[0] === 'tel') {
+                registrant.phone = registrant.phone || [];
+                registrant.phone.push(entry[3]);
+              }
+            }
+            
+            if (Object.keys(registrant).length > 0) {
+              result.registrant = registrant;
+            }
+          }
+        }
+      }
+    }
+    
+    // Extract dates
     if (data.events) {
       for (const event of data.events) {
         if (event.eventAction === 'registration') {
@@ -420,17 +182,174 @@ async function queryRdapFallback(domain: string): Promise<WhoisResult> {
       }
     }
     
+    // Extract status
     if (data.status) {
       result.status = Array.isArray(data.status) ? data.status : [data.status];
     }
     
+    // Extract nameservers
     if (data.nameservers) {
       result.nameservers = data.nameservers.map((ns: any) => ns.ldhName || ns);
     }
     
     return result;
   } catch (error) {
-    console.error("RDAP fallback error:", error);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { error: "RDAP查询超时", rawData: "请求超时" };
+    }
+    
+    throw error;
+  }
+}
+
+// Query the domain-info API (backup method)
+async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
+  const apiUrl = `/api/domain-info?domain=${encodeURIComponent(domain)}`;
+  
+  console.log("Requesting domain-info API:", apiUrl);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      signal: controller.signal,
+      cache: 'no-cache'
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      let errorText = await response.text();
+      
+      try {
+        // Try to parse as JSON if it looks like JSON
+        if (errorText.trim().startsWith('{') || errorText.trim().startsWith('[')) {
+          const errorJson = JSON.parse(errorText);
+          errorText = errorJson.error || errorJson.message || errorText;
+        }
+      } catch (e) {
+        // If can't parse, use the text as is
+      }
+      
+      return { 
+        error: `API请求失败: ${response.status}`,
+        rawData: errorText
+      };
+    }
+    
+    try {
+      const responseText = await response.text();
+      
+      // Only try to parse if it looks like JSON
+      if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        const data = JSON.parse(responseText);
+        
+        // If API returned an error
+        if (data.error) {
+          return {
+            error: data.error,
+            rawData: data.message || data.rawData || "无错误详情"
+          };
+        }
+        
+        // Return API result directly
+        return data;
+      } else {
+        return {
+          error: "API响应格式无效(非JSON)",
+          rawData: responseText
+        };
+      }
+    } catch (error) {
+      return { 
+        error: `无法解析API响应: ${error instanceof Error ? error.message : String(error)}`,
+        rawData: String(error)
+      };
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { error: "API查询超时", rawData: "请求超时" };
+    }
+    
+    throw error;
+  }
+}
+
+// Query direct WHOIS (last resort)
+async function queryDirectWhois(domain: string): Promise<WhoisResult> {
+  const tld = domain.split('.').pop()?.toLowerCase() || "";
+  const whoisServer = whoisServers[tld];
+  
+  if (!whoisServer) {
+    return { 
+      error: `不支持的顶级域名: .${tld}`,
+      rawData: `No WHOIS server defined for .${tld}`
+    };
+  }
+  
+  const apiUrl = `/api/whois-direct?domain=${encodeURIComponent(domain)}&server=${encodeURIComponent(whoisServer)}`;
+  
+  console.log(`Trying direct WHOIS API with server ${whoisServer}...`);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      },
+      signal: controller.signal,
+      cache: 'no-cache'
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const responseText = await response.text();
+      let errorMessage = "Direct WHOIS API请求失败";
+      
+      try {
+        // Try to parse as JSON if possible
+        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+          const errorJson = JSON.parse(responseText);
+          if (errorJson.error) {
+            errorMessage = errorJson.error;
+          } else if (errorJson.message) {
+            errorMessage = errorJson.message;
+          }
+        }
+      } catch (e) {
+        // If can't parse JSON, use the text response
+      }
+      
+      return {
+        error: errorMessage,
+        rawData: responseText
+      };
+    }
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      return {
+        error: data.error,
+        rawData: data.message || "无错误详情"
+      };
+    }
+    
+    return data;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { error: "WHOIS API超时", rawData: "请求超时" };
+    }
     throw error;
   }
 }
