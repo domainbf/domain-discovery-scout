@@ -52,18 +52,25 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-8 px-4">
-      <div className="container mx-auto max-w-4xl">
-        <header className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">域名信息查询</h1>
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 to-indigo-50 py-16 px-4">
+      <div className="container mx-auto max-w-3xl">
+        <header className="mb-10 text-center">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            域名信息查询
+          </h1>
+          <p className="text-gray-500 text-md">快速查询、轻松获取完整域名信息</p>
         </header>
 
-        <DomainSearch onSearch={handleSearch} isLoading={isLoading} />
+        <div className="relative z-10">
+          <DomainSearch onSearch={handleSearch} isLoading={isLoading} />
+        </div>
         
-        {whoisData && <WhoisResults data={whoisData} domain={searchedDomain} />}
+        <div className="mt-8">
+          {whoisData && <WhoisResults data={whoisData} domain={searchedDomain} />}
+        </div>
         
-        <footer className="mt-8 text-center text-gray-400 text-xs">
-          © {new Date().getFullYear()} WHOIS查询服务
+        <footer className="mt-16 text-center text-gray-400 text-xs">
+          © {new Date().getFullYear()} WHOIS查询服务 | 适配 Vercel 部署
         </footer>
       </div>
     </div>

@@ -2,8 +2,7 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { Search, X, AlertTriangle } from "lucide-react";
+import { AlertTriangle, Search, X } from "lucide-react";
 
 interface DomainSearchProps {
   onSearch: (domain: string) => void;
@@ -42,18 +41,16 @@ const DomainSearch: React.FC<DomainSearchProps> = ({ onSearch, isLoading }) => {
   };
 
   return (
-    <Card className="p-6 shadow-lg bg-white/95 backdrop-blur rounded-xl border-none">
-      <h2 className="text-2xl font-bold mb-4 text-center text-gray-800">域名查询</h2>
-      
+    <div className="rounded-2xl bg-white/80 backdrop-blur-md shadow-xl border border-white/20 overflow-hidden p-6">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-grow">
             <Input
               type="text"
-              placeholder="输入域名，例如: google.com"
+              placeholder="输入域名，例如: example.com"
               value={domain}
               onChange={handleInputChange}
-              className="pl-4 pr-10 py-5 w-full rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm text-lg"
+              className="pl-4 pr-10 py-6 w-full rounded-lg border border-indigo-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 shadow-sm text-lg"
               disabled={isLoading}
             />
             {domain && (
@@ -69,7 +66,7 @@ const DomainSearch: React.FC<DomainSearchProps> = ({ onSearch, isLoading }) => {
           </div>
           <Button 
             type="submit" 
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-5 rounded-lg transition-colors text-lg shadow-md"
+            className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white px-8 py-6 rounded-lg transition-all duration-300 text-lg shadow-md font-medium"
             disabled={isLoading}
           >
             {isLoading ? (
@@ -89,16 +86,13 @@ const DomainSearch: React.FC<DomainSearchProps> = ({ onSearch, isLoading }) => {
           </Button>
         </div>
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-md text-sm flex items-start">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm flex items-start">
             <AlertTriangle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
-        <div className="text-sm text-gray-500 text-center">
-          输入完整域名（包含后缀，如 example.com）
-        </div>
       </form>
-    </Card>
+    </div>
   );
 };
 

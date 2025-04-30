@@ -1,9 +1,8 @@
 
 import React from 'react';
-import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { WhoisResult } from '@/api/whoisService';
-import { AlertCircle, Globe, Calendar, Shield, Server, User, RefreshCcw, FileText } from "lucide-react";
+import { AlertCircle, Globe, Calendar, Shield, Server, User, RefreshCcw, FileText, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface WhoisResultsProps {
@@ -16,23 +15,32 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
 
   if (data.error) {
     return (
-      <Card className="p-6 mt-6 w-full mx-auto bg-red-50 border border-red-200 shadow-lg rounded-xl">
+      <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
         <div className="flex items-center text-red-600 mb-4">
-          <AlertCircle className="h-6 w-6 mr-2" />
+          <AlertTriangle className="h-6 w-6 mr-3 flex-shrink-0" />
           <h3 className="text-xl font-semibold">查询错误</h3>
         </div>
         <p className="text-red-700">{data.error}</p>
         
         {data.rawData && (
-          <div className="mt-4">
+          <div className="mt-6">
             <Separator className="my-4" />
-            <h4 className="text-lg font-medium mb-2 text-red-700">服务器响应信息:</h4>
-            <pre className="bg-white p-4 rounded-md text-sm overflow-auto max-h-96 text-gray-700 whitespace-pre-wrap">
-              {data.rawData}
-            </pre>
+            <details className="group">
+              <summary className="flex items-center cursor-pointer text-red-600 font-medium">
+                <FileText className="h-4 w-4 mr-2" />
+                查看详细错误
+                <svg className="ml-2 h-5 w-5 group-open:rotate-180 transition-transform" 
+                     xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </summary>
+              <pre className="mt-3 bg-white/70 p-4 rounded-md text-sm overflow-auto max-h-60 text-gray-700 whitespace-pre-wrap">
+                {data.rawData}
+              </pre>
+            </details>
           </div>
         )}
-      </Card>
+      </div>
     );
   }
 
@@ -112,132 +120,143 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
   const expiryRemaining = getExpiryRemaining(data.expiryDate || data.expires);
 
   return (
-    <Card className="p-6 mt-6 w-full mx-auto border-t-4 border-t-gray-500 shadow-lg bg-white rounded-xl">
-      <div className="flex items-center mb-4">
-        <Globe className="h-6 w-6 text-indigo-600 mr-3" />
-        <h3 className="text-xl font-bold text-gray-800">{domain}</h3>
+    <div className="rounded-2xl bg-white/80 backdrop-blur-md shadow-xl border border-white/20 overflow-hidden">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-5 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full bg-white/10 backdrop-blur-sm"></div>
+        <div className="flex items-center relative z-10">
+          <Globe className="h-6 w-6 text-white mr-3" strokeWidth={1.5} />
+          <h3 className="text-xl font-bold text-white">{domain}</h3>
+        </div>
       </div>
       
-      <Separator className="my-4" />
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <div>
-            <div className="text-sm text-gray-500 mb-1 flex items-center">
-              <User className="h-4 w-4 mr-1 text-gray-400" />
-              注册商
-            </div>
-            <div className="font-medium">{data.registrar || "未知"}</div>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+      <div className="p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-5">
+            <div className="bg-gray-50/80 rounded-lg p-4">
               <div className="text-sm text-gray-500 mb-1 flex items-center">
-                <Calendar className="h-4 w-4 mr-1 text-gray-400" />
-                创建日期
+                <User className="h-4 w-4 mr-1 text-indigo-500" />
+                注册商
               </div>
-              <div className="font-medium">{formatDate(data.creationDate || data.created)}</div>
-              {domainAge && (
-                <div className="text-xs text-indigo-600 mt-1">
-                  域名年龄: {domainAge}
-                </div>
-              )}
+              <div className="font-medium text-gray-800">{data.registrar || "未知"}</div>
             </div>
             
-            <div>
-              <div className="text-sm text-gray-500 mb-1 flex items-center">
-                <Calendar className="h-4 w-4 mr-1 text-gray-400" />
-                过期日期
-              </div>
-              <div className="font-medium">{formatDate(data.expiryDate || data.expires)}</div>
-              {expiryRemaining && (
-                <div className={`text-xs mt-1 ${expiryRemaining.includes('已过期') ? 'text-red-600' : 'text-green-600'}`}>
-                  {expiryRemaining}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-gray-50/80 rounded-lg p-4">
+                <div className="text-sm text-gray-500 mb-1 flex items-center">
+                  <Calendar className="h-4 w-4 mr-1 text-indigo-500" />
+                  创建日期
                 </div>
-              )}
-            </div>
-          </div>
-          
-          <div>
-            <div className="text-sm text-gray-500 mb-1 flex items-center">
-              <RefreshCcw className="h-4 w-4 mr-1 text-gray-400" />
-              最后更新
-            </div>
-            <div className="font-medium">{formatDate(data.lastUpdated || data.updated)}</div>
-          </div>
-          
-          {data.status && (
-            <div>
-              <div className="text-sm text-gray-500 mb-2 flex items-center">
-                <Shield className="h-4 w-4 mr-1 text-gray-400" />
-                域名状态
+                <div className="font-medium text-gray-800">{formatDate(data.creationDate || data.created)}</div>
+                {domainAge && (
+                  <div className="text-xs text-indigo-600 mt-1 font-medium">
+                    域名年龄: {domainAge}
+                  </div>
+                )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {(Array.isArray(data.status) ? data.status : [data.status]).map((status, index) => (
-                  <Badge key={index} variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
-                    {status}
-                  </Badge>
-                ))}
+              
+              <div className="bg-gray-50/80 rounded-lg p-4">
+                <div className="text-sm text-gray-500 mb-1 flex items-center">
+                  <Calendar className="h-4 w-4 mr-1 text-indigo-500" />
+                  过期日期
+                </div>
+                <div className="font-medium text-gray-800">{formatDate(data.expiryDate || data.expires)}</div>
+                {expiryRemaining && (
+                  <div className={`text-xs mt-1 font-medium ${expiryRemaining.includes('已过期') ? 'text-red-600' : 'text-green-600'}`}>
+                    {expiryRemaining}
+                  </div>
+                )}
               </div>
             </div>
-          )}
+            
+            <div className="bg-gray-50/80 rounded-lg p-4">
+              <div className="text-sm text-gray-500 mb-1 flex items-center">
+                <RefreshCcw className="h-4 w-4 mr-1 text-indigo-500" />
+                最后更新
+              </div>
+              <div className="font-medium text-gray-800">{formatDate(data.lastUpdated || data.updated)}</div>
+            </div>
+            
+            {data.status && (
+              <div className="bg-gray-50/80 rounded-lg p-4">
+                <div className="text-sm text-gray-500 mb-2 flex items-center">
+                  <Shield className="h-4 w-4 mr-1 text-indigo-500" />
+                  域名状态
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(Array.isArray(data.status) ? data.status : [data.status]).map((status, index) => (
+                    <Badge key={index} variant="outline" className="bg-white text-gray-700 border-indigo-100">
+                      {status}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="space-y-5">
+            {data.nameservers && data.nameservers.length > 0 && (
+              <div className="bg-gray-50/80 rounded-lg p-4">
+                <div className="text-sm text-gray-500 mb-2 flex items-center">
+                  <Server className="h-4 w-4 mr-1 text-indigo-500" />
+                  域名服务器
+                </div>
+                <ul className="space-y-1">
+                  {data.nameservers.map((ns, index) => (
+                    <li key={index} className="text-gray-800 bg-white px-3 py-2 rounded text-sm border border-indigo-50">
+                      {ns}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            {data.registrant && (
+              <>
+                {(data.registrant.name || data.registrant.org) && (
+                  <div className="bg-gray-50/80 rounded-lg p-4">
+                    <div className="text-sm text-gray-500 mb-1 flex items-center">
+                      <User className="h-4 w-4 mr-1 text-indigo-500" />
+                      注册人
+                    </div>
+                    <div className="font-medium text-gray-800">{data.registrant.name || data.registrant.org}</div>
+                    {data.registrant.country && (
+                      <div className="text-sm text-gray-600 mt-1">
+                        {data.registrant.country}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
         
-        <div className="space-y-4">
-          {data.nameservers && data.nameservers.length > 0 && (
-            <div>
-              <div className="text-sm text-gray-500 mb-2 flex items-center">
-                <Server className="h-4 w-4 mr-1 text-gray-400" />
-                域名服务器
+        {data.rawData && (
+          <div className="mt-6 pt-4 border-t border-gray-100">
+            <details className="group">
+              <summary className="flex items-center cursor-pointer text-gray-600 font-medium">
+                <FileText className="h-4 w-4 mr-1" />
+                查看原始数据
+                <svg className="ml-2 h-5 w-5 group-open:rotate-180 transition-transform" 
+                     xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </summary>
+              <div className="mt-3 overflow-hidden">
+                <pre className="bg-gray-50/80 p-4 rounded-md text-sm overflow-auto max-h-80 text-gray-700 whitespace-pre-wrap">
+                  {data.rawData}
+                </pre>
               </div>
-              <ul className="space-y-1">
-                {data.nameservers.map((ns, index) => (
-                  <li key={index} className="text-gray-700 bg-gray-50 px-2 py-1 rounded text-sm">{ns}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          
-          {data.registrant && (
-            <>
-              {(data.registrant.name || data.registrant.org) && (
-                <div>
-                  <div className="text-sm text-gray-500 mb-1 flex items-center">
-                    <User className="h-4 w-4 mr-1 text-gray-400" />
-                    注册人
-                  </div>
-                  <div className="font-medium">{data.registrant.name || data.registrant.org}</div>
-                </div>
-              )}
-            </>
-          )}
+            </details>
+          </div>
+        )}
+        
+        <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
+          <div>数据来源: {data.source || '未知'}</div>
+          <div>查询时间: {new Date().toLocaleString('zh-CN')}</div>
         </div>
       </div>
-      
-      {data.rawData && (
-        <div className="mt-6 pt-4 border-t border-gray-100">
-          <details className="group">
-            <summary className="flex items-center cursor-pointer text-gray-600 font-medium">
-              <FileText className="h-4 w-4 mr-1" />
-              查看原始数据
-              <svg className="ml-2 h-5 w-5 group-open:rotate-180 transition-transform" 
-                   xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </summary>
-            <div className="mt-3 overflow-hidden">
-              <pre className="bg-gray-50 p-4 rounded-md text-sm overflow-auto max-h-80 text-gray-700 whitespace-pre-wrap">
-                {data.rawData}
-              </pre>
-            </div>
-          </details>
-        </div>
-      )}
-      
-      <div className="mt-4 pt-2 border-t border-gray-100 text-xs text-gray-400">
-        数据来源: {data.source || '未知'} | 查询时间: {new Date().toLocaleString('zh-CN')}
-      </div>
-    </Card>
+    </div>
   );
 };
 
