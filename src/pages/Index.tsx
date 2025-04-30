@@ -4,6 +4,7 @@ import DomainSearch from '@/components/DomainSearch';
 import WhoisResults from '@/components/WhoisResults';
 import { queryWhois, WhoisResult } from '@/api/whoisService';
 import { toast } from "@/components/ui/use-toast";
+import { MegaphoneIcon } from 'lucide-react';
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -52,14 +53,20 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-50 to-indigo-50 py-16 px-4">
+    <div className="min-h-screen bg-gradient-to-b from-white to-indigo-50 py-16 px-4">
       <div className="container mx-auto max-w-3xl">
         <header className="mb-10 text-center">
           <h1 className="text-4xl font-bold text-gray-800 mb-2 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
             域名信息查询
           </h1>
-          <p className="text-gray-500 text-md">快速查询、轻松获取完整域名信息</p>
+          <p className="text-gray-500 text-md">请在下方输入要查找的域名或IP等信息</p>
         </header>
+
+        {/* 隐私提示 */}
+        <div className="bg-white/80 backdrop-blur-md rounded-lg p-3 mb-6 border border-gray-100 flex items-center shadow-sm">
+          <MegaphoneIcon size={18} className="text-gray-500 mr-2 flex-shrink-0" />
+          <p className="text-sm text-gray-600">我们不存储不记录所有查询内容</p>
+        </div>
 
         <div className="relative z-10">
           <DomainSearch onSearch={handleSearch} isLoading={isLoading} />
