@@ -84,8 +84,8 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
         {/* Raw Data Details */}
         {data.rawData && <RawDataDetails rawData={data.rawData} />}
         
-        {/* Footer */}
-        <WhoisDataFooter source={data.source} />
+        {/* Footer with raw data for copy/download */}
+        <WhoisDataFooter source={data.source} rawData={data.rawData} />
       </div>
     </div>
   );

@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => ({
     proxy: {
       // 配置本地WHOIS查询API代理
       '/api/whois': {
-        target: 'http://localhost:3000',
+        target: process.env.VITE_API_URL || 'http://localhost:3000',
         changeOrigin: true,
         rewrite: (path) => path
       }
@@ -28,4 +28,9 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Add this for Vercel deployment
+  build: {
+    outDir: "dist",
+    sourcemap: true,
+  }
 }));
