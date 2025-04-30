@@ -219,9 +219,9 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
                       注册人
                     </div>
                     <div className="font-medium text-gray-800">{data.registrant.name || data.registrant.org}</div>
-                    {data.registrant.country && (
+                    {data.registrant.address && (
                       <div className="text-sm text-gray-600 mt-1">
-                        {data.registrant.country}
+                        {data.registrant.address}
                       </div>
                     )}
                   </div>

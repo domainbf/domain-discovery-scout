@@ -1,4 +1,3 @@
-
 // WHOIS 查询服务 - 使用优化的查询系统，优先采用RDAP
 
 import { whoisServers, rdapBootstrap } from '@/utils/whois-servers';
@@ -10,6 +9,7 @@ export interface Contact {
   email?: string[];
   phone?: string[];
   address?: string;
+  country?: string; // Added country property to fix the TypeScript error
 }
 
 export interface DNSData {
