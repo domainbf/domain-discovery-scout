@@ -34,9 +34,8 @@ export const getDomainAge = (dateString?: string) => {
     const today = new Date();
     const diffTime = Math.abs(today.getTime() - creationDate.getTime());
     const diffYears = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 365));
-    const diffMonths = Math.floor((diffTime % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24 * 30));
     
-    return `${diffYears} 年 ${diffMonths} 个月`;
+    return diffYears > 0 ? `${diffYears}年域名` : "新注册域名";
   } catch (e) {
     return null;
   }
@@ -72,5 +71,27 @@ export const getExpiryRemaining = (dateString?: string) => {
     return `剩余 ${diffDays} 天`;
   } catch (e) {
     return null;
+  }
+};
+
+// Format domain age for display
+export const formatDomainAge = (dateString?: string) => {
+  if (!dateString) return "未知";
+  
+  try {
+    const creationDate = new Date(dateString);
+    if (isNaN(creationDate.getTime())) return "未知";
+    
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - creationDate.getTime());
+    const diffYears = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 365));
+    
+    if (diffYears === 0) return "新注册";
+    if (diffYears === 1) return "1年域名";
+    if (diffYears <= 5) return `${diffYears}年域名`;
+    if (diffYears <= 10) return `${diffYears}年域名`;
+    return `${diffYears}年老米`;
+  } catch (e) {
+    return "未知";
   }
 };

@@ -1,8 +1,8 @@
 
 import React from 'react';
-import { Globe, Camera } from "lucide-react";
+import { Globe, Camera, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getDomainAgeCategory } from '@/utils/domainStatusUtils';
+import { formatDomainAge } from '@/components/whois/WhoisUtils';
 
 interface DomainHeaderProps {
   domain: string;
@@ -11,8 +11,20 @@ interface DomainHeaderProps {
 }
 
 const DomainHeader: React.FC<DomainHeaderProps> = ({ domain, creationDate, expiryDate }) => {
-  // Get domain age category info
-  const { tag, icon: AgeIcon, color } = getDomainAgeCategory(creationDate, expiryDate);
+  // Get formatted domain age
+  const domainAgeText = formatDomainAge(creationDate);
+  
+  // Determine badge color based on domain age
+  let badgeColorClass = "bg-white/10 text-white";
+  if (domainAgeText.includes("新注册")) {
+    badgeColorClass = "bg-pink-500/20 text-pink-200";
+  } else if (domainAgeText.includes("1年")) {
+    badgeColorClass = "bg-blue-500/20 text-blue-200";
+  } else if (domainAgeText.includes("老米")) {
+    badgeColorClass = "bg-purple-500/20 text-purple-200";
+  } else if (parseInt(domainAgeText) > 5) {
+    badgeColorClass = "bg-amber-500/20 text-amber-200";
+  }
   
   return (
     <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-5 relative overflow-hidden rounded-t-2xl">
@@ -31,10 +43,10 @@ const DomainHeader: React.FC<DomainHeaderProps> = ({ domain, creationDate, expir
         </div>
         
         {/* Domain age tag */}
-        <div className="flex items-center mt-2">
-          <Badge variant="outline" className={`border-white/20 bg-white/10 ${color} flex items-center gap-1`}>
-            <AgeIcon className="h-3.5 w-3.5" />
-            {tag}
+        <div className="flex items-center mt-2 gap-2">
+          <Badge variant="outline" className={`border-white/20 ${badgeColorClass} flex items-center gap-1`}>
+            <Clock className="h-3.5 w-3.5" />
+            {domainAgeText}
           </Badge>
         </div>
       </div>

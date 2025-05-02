@@ -6,6 +6,7 @@ import { WhoisResult } from '@/api/whoisService';
 import { toast } from "@/components/ui/use-toast";
 import { MegaphoneIcon } from 'lucide-react';
 import { lookupDomain, isValidDomain } from '@/utils/domainLookup';
+import DomainPricing from '@/components/domain/DomainPricing';
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -93,7 +94,12 @@ const Index = () => {
           <DomainSearch onSearch={handleSearch} isLoading={isLoading} />
         </div>
         
-        <div className="mt-8">
+        {/* 域名价格信息 - 在搜索框下方，查询结果上方 */}
+        {searchedDomain && (
+          <DomainPricing domain={searchedDomain} />
+        )}
+        
+        <div className="mt-4">
           {whoisData && <WhoisResults data={whoisData} domain={searchedDomain} />}
         </div>
         

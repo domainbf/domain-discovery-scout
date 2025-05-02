@@ -1,5 +1,5 @@
 
-import { Check, X, Star, CalendarCheck, Info } from "lucide-react";
+import { Check, X, Star, CalendarCheck, Info, Clock } from "lucide-react";
 
 // Status code translations to Chinese
 export const translateStatusCode = (status: string): string => {
@@ -64,9 +64,9 @@ export const getDomainAgeCategory = (creationDate?: string, expiryDate?: string)
     if (diffYears < 0.1) {
       return { tag: '新注册', icon: Star, color: 'text-pink-500' };
     } else if (diffYears <= 1) {
-      return { tag: '1年域名', icon: CalendarCheck, color: 'text-blue-500' };
+      return { tag: '1年域名', icon: Clock, color: 'text-blue-500' };
     } else if (diffYears <= 5) {
-      return { tag: '5年域名', icon: CalendarCheck, color: 'text-indigo-600' };
+      return { tag: '5年域名', icon: Clock, color: 'text-indigo-600' };
     } else if (diffYears > 10 && isRenewed) {
       return { tag: '已续费10年', icon: Star, color: 'text-amber-500' };
     } else if (diffYears > 10) {
@@ -74,7 +74,7 @@ export const getDomainAgeCategory = (creationDate?: string, expiryDate?: string)
     } else {
       return { 
         tag: `${Math.floor(diffYears)}年域名`, 
-        icon: CalendarCheck, 
+        icon: Clock, 
         color: 'text-green-600' 
       };
     }
