@@ -1,18 +1,24 @@
-/**
- * WHOIS 查询服务 - 使用优化的查询系统，优先采用 RDAP
- * 如果 RDAP 不支持或失败，则切换到本地 WHOIS 查询
- */
+// WHOIS 查询服务 - 使用优化的查询系统，优先采用RDAP
 
-import { whoisServers } from '@/utils/whois-servers';
-import net from 'net';
+import { whoisServers, rdapBootstrap } from '@/utils/whois-servers';
 
+// Import the types from our library
 export interface Contact {
   name?: string;
   org?: string;
   email?: string[];
   phone?: string[];
   address?: string;
-  country?: string;
+  country?: string; // Added country property to fix the TypeScript error
+}
+
+export interface DNSData {
+  a?: string[];
+  mx?: Array<{exchange: string, priority: number}>;
+  txt?: string[];
+  ns?: string[];
+  caa?: any[];
+  dnssec?: boolean;
 }
 
 export interface WhoisResult {
@@ -24,115 +30,338 @@ export interface WhoisResult {
   created?: string;
   updated?: string;
   expires?: string;
-  source?: string; // 查询来源（RDAP 或 Local WHOIS）
+  dns_records?: DNSData;
+  registrant?: Contact;
+  admin?: Contact;
+  tech?: Contact;
+  abuse?: Contact;
+  source?: string;
   error?: string;
   rawData?: string;
+  creationDate?: string; // For backward compatibility
+  expiryDate?: string;   // For backward compatibility
+  lastUpdated?: string;  // For backward compatibility
+  registrantEmail?: string; // For backward compatibility
+  registrantPhone?: string; // For backward compatibility
 }
 
 /**
- * 主查询接口：优先使用 RDAP，如果失败则切换到本地 WHOIS
+ * Query domain information using prioritized lookup sources
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
-  const tld = domain.split('.').pop()?.toLowerCase() || '';
+  try {
+    // Validate domain format
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
+    if (!domainRegex.test(domain)) {
+      return { error: "域名格式无效" };
+    }
 
-  if (!tld) {
-    return { error: '域名格式无效：无法解析 TLD' };
-  }
+    console.log(`Querying information for ${domain}...`);
 
-  console.log(`开始查询域名信息：${domain}，TLD：${tld}`);
-
-  // 检查是否支持 RDAP
-  const isRdapSupported = !!whoisServers[tld]?.rdap;
-  if (isRdapSupported) {
-    console.log('RDAP 支持该 TLD，尝试使用 RDAP 查询...');
+    // First try RDAP (preferred method)
     try {
-      const rdapResult = await queryRdap(domain);
+      console.log("Trying RDAP lookup first...");
+      const rdapResult = await queryRdapInfo(domain);
       if (!rdapResult.error) {
-        rdapResult.source = 'RDAP';
+        console.log("RDAP lookup successful");
         return rdapResult;
       }
-      console.warn(`RDAP 查询失败：${rdapResult.error}`);
+      console.warn(`RDAP lookup failed: ${rdapResult.error}`);
     } catch (error) {
-      console.error(`RDAP 查询异常：`, error);
-    }
-  } else {
-    console.log(`RDAP 不支持该 TLD：${tld}，切换到本地 WHOIS`);
-  }
-
-  // 使用本地 WHOIS 查询
-  return queryLocalWhois(domain, tld);
-}
-
-/**
- * 使用 RDAP 查询域名信息
- */
-async function queryRdap(domain: string): Promise<WhoisResult> {
-  const tld = domain.split('.').pop()?.toLowerCase() || '';
-  const rdapUrl = whoisServers[tld]?.rdap;
-
-  if (!rdapUrl) {
-    return { error: `RDAP URL 未配置 TLD：${tld}` };
-  }
-
-  console.log(`RDAP 查询 URL：${rdapUrl}${encodeURIComponent(domain)}`);
-
-  try {
-    const response = await fetch(`${rdapUrl}${encodeURIComponent(domain)}`, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-    });
-
-    if (!response.ok) {
-      return { error: `RDAP 请求失败，状态码：${response.status}` };
+      console.warn(`RDAP error: ${error}`);
     }
 
-    const data = await response.json();
-    return {
-      domain,
-      rawData: JSON.stringify(data, null, 2),
-    };
+    // If RDAP fails, try the domain-info API
+    try {
+      console.log("Trying domain-info API...");
+      const result = await queryDomainInfoApi(domain);
+      if (!result.error) {
+        return convertToLegacyFormat(result);
+      }
+      console.warn(`domain-info API query failed: ${result.error}`);
+    } catch (error) {
+      console.warn(`domain-info API error: ${error}`);
+    }
+
+    // Finally try direct WHOIS
+    return await queryDirectWhois(domain);
   } catch (error) {
-    return { error: `RDAP 查询错误：${error.message}` };
+    console.error("Domain lookup error:", error);
+    return { 
+      error: `查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      rawData: String(error)
+    };
   }
 }
 
-/**
- * 使用本地 WHOIS 查询域名信息
- */
-function queryLocalWhois(domain: string, tld: string): Promise<WhoisResult> {
-  const whoisServer = whoisServers[tld]?.whois;
-  if (!whoisServer) {
-    return Promise.resolve({
-      error: `未配置 WHOIS 服务器 TLD：.${tld}`,
+// Query RDAP directly (primary method)
+async function queryRdapInfo(domain: string): Promise<WhoisResult> {
+  const rdapUrl = `${rdapBootstrap}${encodeURIComponent(domain)}`;
+  
+  console.log("Requesting RDAP info:", rdapUrl);
+  
+  // Set timeout to 15 seconds
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
+  try {
+    const response = await fetch(rdapUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+      cache: 'no-cache'
     });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      return {
+        error: `RDAP请求失败: ${response.status}`,
+        rawData: await response.text()
+      };
+    }
+    
+    const data = await response.json();
+    
+    // Parse RDAP response
+    const result: WhoisResult = {
+      domain,
+      source: 'rdap',
+      rawData: JSON.stringify(data, null, 2)
+    };
+    
+    // Extract basic information
+    if (data.entities) {
+      for (const entity of data.entities) {
+        if (entity.roles && entity.roles.includes('registrar')) {
+          result.registrar = entity.vcardArray?.[1]?.find(arr => arr[0] === 'fn')?.[3] || 
+                             entity.publicIds?.[0]?.identifier ||
+                             entity.handle;
+        }
+        
+        if (entity.roles && entity.roles.includes('registrant')) {
+          const registrant: Contact = {};
+          const vcard = entity.vcardArray?.[1];
+          
+          if (vcard) {
+            for (const entry of vcard) {
+              if (entry[0] === 'fn') registrant.name = entry[3];
+              else if (entry[0] === 'org') registrant.org = entry[3];
+              else if (entry[0] === 'email') {
+                registrant.email = registrant.email || [];
+                registrant.email.push(entry[3]);
+              } else if (entry[0] === 'tel') {
+                registrant.phone = registrant.phone || [];
+                registrant.phone.push(entry[3]);
+              }
+            }
+            
+            if (Object.keys(registrant).length > 0) {
+              result.registrant = registrant;
+            }
+          }
+        }
+      }
+    }
+    
+    // Extract dates
+    if (data.events) {
+      for (const event of data.events) {
+        if (event.eventAction === 'registration') {
+          result.created = event.eventDate;
+          result.creationDate = event.eventDate;
+        } else if (event.eventAction === 'expiration') {
+          result.expires = event.eventDate;
+          result.expiryDate = event.eventDate;
+        } else if (event.eventAction === 'last changed') {
+          result.updated = event.eventDate;
+          result.lastUpdated = event.eventDate;
+        }
+      }
+    }
+    
+    // Extract status
+    if (data.status) {
+      result.status = Array.isArray(data.status) ? data.status : [data.status];
+    }
+    
+    // Extract nameservers
+    if (data.nameservers) {
+      result.nameservers = data.nameservers.map((ns: any) => ns.ldhName || ns);
+    }
+    
+    return result;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { error: "RDAP查询超时", rawData: "请求超时" };
+    }
+    
+    throw error;
   }
+}
 
-  console.log(`尝试本地 WHOIS 查询：域名=${domain}，服务器=${whoisServer}`);
-
-  return new Promise((resolve, reject) => {
-    const client = net.createConnection({ port: 43, host: whoisServer }, () => {
-      console.log(`已连接到 WHOIS 服务器：${whoisServer}`);
-      client.write(`${domain}\r\n`);
+// Query the domain-info API (backup method)
+async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
+  const apiUrl = `/api/domain-info?domain=${encodeURIComponent(domain)}`;
+  
+  console.log("Requesting domain-info API:", apiUrl);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      signal: controller.signal,
+      cache: 'no-cache'
     });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      let errorText = await response.text();
+      
+      try {
+        // Try to parse as JSON if it looks like JSON
+        if (errorText.trim().startsWith('{') || errorText.trim().startsWith('[')) {
+          const errorJson = JSON.parse(errorText);
+          errorText = errorJson.error || errorJson.message || errorText;
+        }
+      } catch (e) {
+        // If can't parse, use the text as is
+      }
+      
+      return { 
+        error: `API请求失败: ${response.status}`,
+        rawData: errorText
+      };
+    }
+    
+    try {
+      const responseText = await response.text();
+      
+      // Only try to parse if it looks like JSON
+      if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        const data = JSON.parse(responseText);
+        
+        // If API returned an error
+        if (data.error) {
+          return {
+            error: data.error,
+            rawData: data.message || data.rawData || "无错误详情"
+          };
+        }
+        
+        // Return API result directly
+        return data;
+      } else {
+        return {
+          error: "API响应格式无效(非JSON)",
+          rawData: responseText
+        };
+      }
+    } catch (error) {
+      return { 
+        error: `无法解析API响应: ${error instanceof Error ? error.message : String(error)}`,
+        rawData: String(error)
+      };
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { error: "API查询超时", rawData: "请求超时" };
+    }
+    
+    throw error;
+  }
+}
 
-    let rawData = '';
-    client.on('data', (chunk) => {
-      rawData += chunk.toString();
+// Query direct WHOIS (last resort)
+async function queryDirectWhois(domain: string): Promise<WhoisResult> {
+  const tld = domain.split('.').pop()?.toLowerCase() || "";
+  const whoisServer = whoisServers[tld];
+  
+  if (!whoisServer) {
+    return { 
+      error: `不支持的顶级域名: .${tld}`,
+      rawData: `No WHOIS server defined for .${tld}`
+    };
+  }
+  
+  const apiUrl = `/api/whois-direct?domain=${encodeURIComponent(domain)}&server=${encodeURIComponent(whoisServer)}`;
+  
+  console.log(`Trying direct WHOIS API with server ${whoisServer}...`);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      },
+      signal: controller.signal,
+      cache: 'no-cache'
     });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const responseText = await response.text();
+      let errorMessage = "Direct WHOIS API请求失败";
+      
+      try {
+        // Try to parse as JSON if possible
+        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+          const errorJson = JSON.parse(responseText);
+          if (errorJson.error) {
+            errorMessage = errorJson.error;
+          } else if (errorJson.message) {
+            errorMessage = errorJson.message;
+          }
+        }
+      } catch (e) {
+        // If can't parse JSON, use the text response
+      }
+      
+      return {
+        error: errorMessage,
+        rawData: responseText
+      };
+    }
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      return {
+        error: data.error,
+        rawData: data.message || "无错误详情"
+      };
+    }
+    
+    return data;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { error: "WHOIS API超时", rawData: "请求超时" };
+    }
+    throw error;
+  }
+}
 
-    client.on('end', () => {
-      console.log(`WHOIS 查询完成：域名=${domain}`);
-      resolve({ domain, rawData, source: 'Local WHOIS' });
-    });
-
-    client.on('error', (error) => {
-      console.error(`WHOIS 查询错误：域名=${domain}`, error);
-      reject({ error: `WHOIS 查询失败：${error.message}` });
-    });
-
-    client.setTimeout(10000, () => {
-      client.destroy();
-      reject({ error: 'WHOIS 查询超时' });
-    });
-  });
+// Convert the new domain-info API format to the legacy WhoisResult format for backward compatibility
+function convertToLegacyFormat(info: WhoisResult): WhoisResult {
+  return {
+    ...info,
+    creationDate: info.created,
+    expiryDate: info.expires,
+    lastUpdated: info.updated,
+    registrantEmail: info.registrant?.email?.[0],
+    registrantPhone: info.registrant?.phone?.[0]
+  };
 }
