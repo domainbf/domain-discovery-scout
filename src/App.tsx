@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { FaSearch, FaRegLightbulb, FaRegCopy, FaDownload } from 'react-icons/fa'; // 图标
 import { lookupDomain } from './utils/domainLookup';
@@ -120,80 +121,95 @@ const App = () => {
         }}>
           <h2 style={{ fontSize: '18px', color: '#333', marginBottom: '10px' }}>查询结果</h2>
           <p><strong>域名:</strong> {result.domain}</p>
-          <p><strong>状态:</strong> {result.status.map((s: string) => (
-            <span key={s} style={{
-              display: 'inline-block',
-              backgroundColor: '#f0f0f0',
-              padding: '5px 8px',
-              margin: '2px',
-              borderRadius: '4px',
-              fontSize: '12px',
-            }}>{s}</span>
-          ))}</p>
-          <p><strong>注册商:</strong> {result.registrar}</p>
-          <p><strong>注册日期:</strong> {result.creationDate}</p>
-          <p><strong>更新日期:</strong> {result.updatedDate}</p>
-          <p><strong>到期日期:</strong> {result.expiryDate}</p>
-          <p><strong>DNS:</strong> {result.dns.map((dns: string) => (
-            <span key={dns} style={{
-              display: 'inline-block',
-              backgroundColor: '#f0f0f0',
-              padding: '5px 8px',
-              margin: '2px',
-              borderRadius: '4px',
-              fontSize: '12px',
-            }}>{dns}</span>
-          ))}</p>
-          <p><strong>DNSSEC:</strong> {result.dnssec}</p>
+          
+          {/* 修复：检查状态属性是否存在并且是数组 */}
+          {result.status && Array.isArray(result.status) && (
+            <p><strong>状态:</strong> {result.status.map((s: string, index: number) => (
+              <span key={index} style={{
+                display: 'inline-block',
+                backgroundColor: '#f0f0f0',
+                padding: '5px 8px',
+                margin: '2px',
+                borderRadius: '4px',
+                fontSize: '12px',
+              }}>{s}</span>
+            ))}</p>
+          )}
+          
+          <p><strong>注册商:</strong> {result.registrar || '未知'}</p>
+          <p><strong>注册日期:</strong> {result.creationDate || result.created || '未知'}</p>
+          <p><strong>更新日期:</strong> {result.updatedDate || result.updated || '未知'}</p>
+          <p><strong>到期日期:</strong> {result.expiryDate || result.expires || '未知'}</p>
+          
+          {/* 修复：检查nameservers属性是否存在 */}
+          {result.nameservers && Array.isArray(result.nameservers) && (
+            <p><strong>DNS:</strong> {result.nameservers.map((dns: string, index: number) => (
+              <span key={index} style={{
+                display: 'inline-block',
+                backgroundColor: '#f0f0f0',
+                padding: '5px 8px',
+                margin: '2px',
+                borderRadius: '4px',
+                fontSize: '12px',
+              }}>{dns}</span>
+            ))}</p>
+          )}
+          
+          {/* 避免直接访问result.dns */}
+          <p><strong>DNSSEC:</strong> {result.dnssec ? '是' : '否'}</p>
 
           {/* 原始数据 */}
-          <p style={{ marginTop: '20px', fontSize: '14px', color: '#555' }}>
-            原始whois数据可复制及下载 👉
-          </p>
-          <pre style={{
-            backgroundColor: '#f9f9f9',
-            padding: '10px',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            fontSize: '12px',
-            overflowX: 'auto',
-          }}>{result.rawData}</pre>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            marginTop: '10px',
-          }}>
-            <button
-              onClick={() => copyToClipboard(result.rawData)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px 12px',
-                marginRight: '10px',
-                backgroundColor: '#f0f0f0',
+          {result.rawData && (
+            <>
+              <p style={{ marginTop: '20px', fontSize: '14px', color: '#555' }}>
+                原始whois数据可复制及下载 👉
+              </p>
+              <pre style={{
+                backgroundColor: '#f9f9f9',
+                padding: '10px',
                 border: '1px solid #ccc',
                 borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              <FaRegCopy style={{ marginRight: '5px' }} /> 复制
-            </button>
-            <button
-              onClick={downloadData}
-              style={{
+                fontSize: '12px',
+                overflowX: 'auto',
+              }}>{result.rawData}</pre>
+              <div style={{
                 display: 'flex',
-                alignItems: 'center',
-                padding: '8px 12px',
-                backgroundColor: '#007BFF',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              <FaDownload style={{ marginRight: '5px' }} /> 下载
-            </button>
-          </div>
+                justifyContent: 'flex-end',
+                marginTop: '10px',
+              }}>
+                <button
+                  onClick={() => copyToClipboard(result.rawData)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    marginRight: '10px',
+                    backgroundColor: '#f0f0f0',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FaRegCopy style={{ marginRight: '5px' }} /> 复制
+                </button>
+                <button
+                  onClick={downloadData}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    backgroundColor: '#007BFF',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FaDownload style={{ marginRight: '5px' }} /> 下载
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
