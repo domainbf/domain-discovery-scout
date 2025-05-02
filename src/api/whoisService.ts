@@ -1,15 +1,6 @@
 import { whoisServers } from '@/utils/whois-servers';
 import net from 'net';
 
-export interface Contact {
-  name?: string;
-  org?: string;
-  email?: string[];
-  phone?: string[];
-  address?: string;
-  country?: string;
-}
-
 export interface WhoisResult {
   domain?: string;
   registrar?: string;
@@ -30,6 +21,12 @@ export interface WhoisResult {
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   const tld = domain.split('.').pop()?.toLowerCase() || "";
 
+  if (!tld) {
+    return { error: "Invalid domain format: TLD not detected" };
+  }
+
+  console.log(`Starting WHOIS/RDAP query for domain: ${domain}, TLD: ${tld}`);
+
   // Check if TLD is supported for RDAP
   const isRdapSupported = !!whoisServers[tld]?.rdap;
   if (isRdapSupported) {
@@ -40,12 +37,12 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         rdapResult.source = 'RDAP';
         return rdapResult;
       }
-      console.warn("RDAP query failed. Falling back to local WHOIS...");
+      console.warn(`RDAP query failed: ${rdapResult.error}`);
     } catch (error) {
-      console.error("RDAP query error:", error);
+      console.error(`RDAP query error for domain (${domain}):`, error);
     }
   } else {
-    console.log("RDAP is not supported for this TLD. Using local WHOIS...");
+    console.log(`RDAP is not supported for TLD: ${tld}. Proceeding to local WHOIS.`);
   }
 
   // Query local WHOIS server
@@ -56,10 +53,14 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
  * Query RDAP service.
  */
 async function queryRdap(domain: string): Promise<WhoisResult> {
-  const rdapUrl = whoisServers[domain.split('.').pop()?.toLowerCase() || ""].rdap;
+  const tld = domain.split('.').pop()?.toLowerCase() || "";
+  const rdapUrl = whoisServers[tld]?.rdap;
+
   if (!rdapUrl) {
-    return { error: "RDAP URL not configured for this TLD" };
+    return { error: `RDAP URL not configured for TLD: ${tld}` };
   }
+
+  console.log(`RDAP query: ${rdapUrl}${encodeURIComponent(domain)}`);
 
   try {
     const response = await fetch(`${rdapUrl}${encodeURIComponent(domain)}`, {
@@ -92,6 +93,8 @@ function queryLocalWhois(domain: string, tld: string): Promise<WhoisResult> {
     });
   }
 
+  console.log(`Attempting local WHOIS query: domain=${domain}, server=${whoisServer}`);
+
   return new Promise((resolve, reject) => {
     const client = net.createConnection({ port: 43, host: whoisServer }, () => {
       console.log(`Connected to WHOIS server: ${whoisServer}`);
@@ -104,10 +107,12 @@ function queryLocalWhois(domain: string, tld: string): Promise<WhoisResult> {
     });
 
     client.on('end', () => {
+      console.log(`WHOIS query completed for domain: ${domain}`);
       resolve({ domain, rawData, source: 'Local WHOIS' });
     });
 
     client.on('error', (error) => {
+      console.error(`WHOIS query error for domain (${domain}):`, error);
       reject({ error: `WHOIS query failed: ${error.message}` });
     });
 
