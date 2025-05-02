@@ -2,9 +2,10 @@
 import React, { useState } from 'react';
 import DomainSearch from '@/components/DomainSearch';
 import WhoisResults from '@/components/WhoisResults';
-import { queryWhois, WhoisResult } from '@/api/whoisService';
+import { WhoisResult } from '@/api/whoisService';
 import { toast } from "@/components/ui/use-toast";
 import { MegaphoneIcon } from 'lucide-react';
+import { lookupDomain, isValidDomain } from '@/utils/domainLookup';
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -12,13 +13,33 @@ const Index = () => {
   const [whoisData, setWhoisData] = useState<WhoisResult | null>(null);
 
   const handleSearch = async (domain: string) => {
+    if (!domain || !domain.trim()) {
+      toast({
+        title: "输入错误",
+        description: "请输入域名后再查询",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Pre-validate domain format to save API calls
+    if (!isValidDomain(domain)) {
+      toast({
+        title: "格式错误",
+        description: "请输入有效的域名格式",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     setSearchedDomain(domain);
     setWhoisData(null); // Clear previous results
     
     try {
       console.log(`开始查询域名: ${domain}`);
-      const result = await queryWhois(domain);
+      // Use our optimized domain lookup service
+      const result = await lookupDomain(domain);
       
       setWhoisData(result);
       

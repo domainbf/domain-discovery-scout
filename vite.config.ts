@@ -15,6 +15,11 @@ export default defineConfig(({ mode }) => ({
         target: process.env.VITE_API_URL || 'http://localhost:3000',
         changeOrigin: true,
         rewrite: (path) => path
+      },
+      '/api/domain-info': {
+        target: process.env.VITE_API_URL || 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (path) => path
       }
     }
   },
@@ -28,9 +33,23 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // Add this for Vercel deployment
+  // Configuration for Vercel deployment
   build: {
     outDir: "dist",
     sourcemap: true,
+    // Important: don't chunk too much to avoid Vercel size limits
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          ui: [
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-toast',
+            '@radix-ui/react-label',
+            '@radix-ui/react-slot'
+          ]
+        }
+      }
+    }
   }
 }));
