@@ -1,5 +1,19 @@
+/**
+ * WHOIS 查询服务 - 使用优化的查询系统，优先采用 RDAP
+ * 如果 RDAP 不支持或失败，则切换到本地 WHOIS 查询
+ */
+
 import { whoisServers } from '@/utils/whois-servers';
 import net from 'net';
+
+export interface Contact {
+  name?: string;
+  org?: string;
+  email?: string[];
+  phone?: string[];
+  address?: string;
+  country?: string;
+}
 
 export interface WhoisResult {
   domain?: string;
@@ -10,57 +24,57 @@ export interface WhoisResult {
   created?: string;
   updated?: string;
   expires?: string;
-  source?: string; // Indicates the source of the query (RDAP or local WHOIS)
+  source?: string; // 查询来源（RDAP 或 Local WHOIS）
   error?: string;
   rawData?: string;
 }
 
 /**
- * Query domain information using prioritized lookup sources
+ * 主查询接口：优先使用 RDAP，如果失败则切换到本地 WHOIS
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
-  const tld = domain.split('.').pop()?.toLowerCase() || "";
+  const tld = domain.split('.').pop()?.toLowerCase() || '';
 
   if (!tld) {
-    return { error: "Invalid domain format: TLD not detected" };
+    return { error: '域名格式无效：无法解析 TLD' };
   }
 
-  console.log(`Starting WHOIS/RDAP query for domain: ${domain}, TLD: ${tld}`);
+  console.log(`开始查询域名信息：${domain}，TLD：${tld}`);
 
-  // Check if TLD is supported for RDAP
+  // 检查是否支持 RDAP
   const isRdapSupported = !!whoisServers[tld]?.rdap;
   if (isRdapSupported) {
-    console.log("RDAP is supported for this TLD. Attempting RDAP query...");
+    console.log('RDAP 支持该 TLD，尝试使用 RDAP 查询...');
     try {
       const rdapResult = await queryRdap(domain);
       if (!rdapResult.error) {
         rdapResult.source = 'RDAP';
         return rdapResult;
       }
-      console.warn(`RDAP query failed: ${rdapResult.error}`);
+      console.warn(`RDAP 查询失败：${rdapResult.error}`);
     } catch (error) {
-      console.error(`RDAP query error for domain (${domain}):`, error);
+      console.error(`RDAP 查询异常：`, error);
     }
   } else {
-    console.log(`RDAP is not supported for TLD: ${tld}. Proceeding to local WHOIS.`);
+    console.log(`RDAP 不支持该 TLD：${tld}，切换到本地 WHOIS`);
   }
 
-  // Query local WHOIS server
+  // 使用本地 WHOIS 查询
   return queryLocalWhois(domain, tld);
 }
 
 /**
- * Query RDAP service.
+ * 使用 RDAP 查询域名信息
  */
 async function queryRdap(domain: string): Promise<WhoisResult> {
-  const tld = domain.split('.').pop()?.toLowerCase() || "";
+  const tld = domain.split('.').pop()?.toLowerCase() || '';
   const rdapUrl = whoisServers[tld]?.rdap;
 
   if (!rdapUrl) {
-    return { error: `RDAP URL not configured for TLD: ${tld}` };
+    return { error: `RDAP URL 未配置 TLD：${tld}` };
   }
 
-  console.log(`RDAP query: ${rdapUrl}${encodeURIComponent(domain)}`);
+  console.log(`RDAP 查询 URL：${rdapUrl}${encodeURIComponent(domain)}`);
 
   try {
     const response = await fetch(`${rdapUrl}${encodeURIComponent(domain)}`, {
@@ -69,7 +83,7 @@ async function queryRdap(domain: string): Promise<WhoisResult> {
     });
 
     if (!response.ok) {
-      return { error: `RDAP request failed with status: ${response.status}` };
+      return { error: `RDAP 请求失败，状态码：${response.status}` };
     }
 
     const data = await response.json();
@@ -78,26 +92,26 @@ async function queryRdap(domain: string): Promise<WhoisResult> {
       rawData: JSON.stringify(data, null, 2),
     };
   } catch (error) {
-    return { error: `RDAP query error: ${error.message}` };
+    return { error: `RDAP 查询错误：${error.message}` };
   }
 }
 
 /**
- * Query local WHOIS server using socket connection.
+ * 使用本地 WHOIS 查询域名信息
  */
 function queryLocalWhois(domain: string, tld: string): Promise<WhoisResult> {
   const whoisServer = whoisServers[tld]?.whois;
   if (!whoisServer) {
     return Promise.resolve({
-      error: `No WHOIS server configured for TLD: .${tld}`,
+      error: `未配置 WHOIS 服务器 TLD：.${tld}`,
     });
   }
 
-  console.log(`Attempting local WHOIS query: domain=${domain}, server=${whoisServer}`);
+  console.log(`尝试本地 WHOIS 查询：域名=${domain}，服务器=${whoisServer}`);
 
   return new Promise((resolve, reject) => {
     const client = net.createConnection({ port: 43, host: whoisServer }, () => {
-      console.log(`Connected to WHOIS server: ${whoisServer}`);
+      console.log(`已连接到 WHOIS 服务器：${whoisServer}`);
       client.write(`${domain}\r\n`);
     });
 
@@ -107,18 +121,18 @@ function queryLocalWhois(domain: string, tld: string): Promise<WhoisResult> {
     });
 
     client.on('end', () => {
-      console.log(`WHOIS query completed for domain: ${domain}`);
+      console.log(`WHOIS 查询完成：域名=${domain}`);
       resolve({ domain, rawData, source: 'Local WHOIS' });
     });
 
     client.on('error', (error) => {
-      console.error(`WHOIS query error for domain (${domain}):`, error);
-      reject({ error: `WHOIS query failed: ${error.message}` });
+      console.error(`WHOIS 查询错误：域名=${domain}`, error);
+      reject({ error: `WHOIS 查询失败：${error.message}` });
     });
 
     client.setTimeout(10000, () => {
       client.destroy();
-      reject({ error: 'WHOIS query timed out' });
+      reject({ error: 'WHOIS 查询超时' });
     });
   });
 }
