@@ -1,8 +1,10 @@
 
 import React, { useState } from 'react';
-import { FaSearch, FaRegLightbulb, FaRegCopy, FaDownload } from 'react-icons/fa'; // 图标
+import { FaSearch, FaRegLightbulb, FaRegCopy, FaDownload } from 'react-icons/fa'; 
 import { lookupDomain } from './utils/domainLookup';
 import { ScrollArea } from './components/ui/scroll-area';
+import DomainStatusTag from './components/whois/DomainStatusTag';
+import { translateStatusCode } from './utils/domainStatusUtils';
 
 const App = () => {
   const [domain, setDomain] = useState('');
@@ -77,8 +79,17 @@ const App = () => {
               <h2 className="text-lg font-medium text-gray-800 mb-4">查询结果</h2>
               
               <div className="space-y-4">
-                <div>
-                  <strong className="text-gray-700">域名:</strong> {result.domain}
+                <div className="flex items-center">
+                  <strong className="text-gray-700 mr-2">域名:</strong> 
+                  <span>{result.domain}</span>
+                  
+                  {/* Add domain age tag here */}
+                  {result.creationDate && (
+                    <div className="ml-2">
+                      {/* Use the new domain age category component here */}
+                      <DomainStatusTag status={result.creationDate || ''} />
+                    </div>
+                  )}
                 </div>
                 
                 {result.status && Array.isArray(result.status) && result.status.length > 0 && (
@@ -90,7 +101,7 @@ const App = () => {
                           key={index} 
                           className="inline-block bg-gray-100 px-2 py-1 rounded text-xs text-gray-700"
                         >
-                          {s}
+                          {translateStatusCode(s)}
                         </span>
                       ))}
                     </div>

@@ -27,10 +27,18 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
 
   const domainAge = getDomainAge(data.creationDate || data.created);
   const expiryRemaining = getExpiryRemaining(data.expiryDate || data.expires);
+  
+  // Get all relevant dates for the components
+  const creationDate = data.creationDate || data.created;
+  const expiryDate = data.expiryDate || data.expires;
 
   return (
     <div className="rounded-2xl bg-white/80 backdrop-blur-md shadow-xl border border-white/20 overflow-hidden">
-      <DomainHeader domain={domain} />
+      <DomainHeader 
+        domain={domain} 
+        creationDate={creationDate} 
+        expiryDate={expiryDate}
+      />
       
       <div className="p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -46,14 +54,14 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <DateInfo 
                 label="创建日期"
-                date={formatDate(data.creationDate || data.created)}
+                date={formatDate(creationDate)}
                 additionalText={domainAge ? `域名年龄: ${domainAge}` : null}
                 additionalTextClass="text-indigo-600"
               />
               
               <DateInfo 
                 label="过期日期"
-                date={formatDate(data.expiryDate || data.expires)}
+                date={formatDate(expiryDate)}
                 additionalText={expiryRemaining}
                 additionalTextClass={expiryRemaining?.includes('已过期') ? 'text-red-600' : 'text-green-600'}
               />
