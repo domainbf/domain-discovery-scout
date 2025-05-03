@@ -32,7 +32,6 @@ export const whoisServers: Record<string, string> = {
   "bb": "whois.nic.bb",
   "fi": "whois.fi",
   "dk": "whois.dk-hostmaster.dk",
-  "nz": "whois.irs.net.nz",
   "pl": "whois.dns.pl",
   "be": "whois.dns.be",
   "br": "whois.registro.br",
@@ -44,7 +43,7 @@ export const whoisServers: Record<string, string> = {
   "online": "whois.nic.online",
   "site": "whois.nic.site",
   "club": "whois.nic.club",
-  // 添加更多国家顶级域名
+  // Additional country code TLDs
   "rw": "whois.ricta.org.rw",
   "ge": "whois.nic.ge",
   "kr": "whois.kr",
@@ -56,7 +55,7 @@ export const whoisServers: Record<string, string> = {
   "th": "whois.thnic.co.th",
   "ph": "whois.dot.ph",
   "vn": "whois.vnnic.vn",
-  "nz": "whois.srs.net.nz",
+  "nz": "whois.srs.net.nz", // This was duplicated
   "mx": "whois.mx",
   "ar": "whois.nic.ar",
   "cl": "whois.nic.cl",
