@@ -2,7 +2,7 @@
 // Serverless function to handle WHOIS queries
 const net = require('net');
 
-// WHOIS servers list
+// WHOIS servers list - consistent with src/utils/whois-servers.ts
 const whoisServers = {
   "com": "whois.verisign-grs.com",
   "net": "whois.verisign-grs.com",
@@ -35,12 +35,20 @@ const whoisServers = {
   "bb": "whois.nic.bb",
   "fi": "whois.fi",
   "dk": "whois.dk-hostmaster.dk",
-  "nz": "whois.irs.net.nz",
+  "nz": "whois.srs.net.nz",
   "pl": "whois.dns.pl",
   "be": "whois.dns.be",
   "br": "whois.registro.br",
   "eu": "whois.eu",
-  // 添加更多国家顶级域名
+  // Added TLDs from whois-servers.ts
+  "app": "whois.nic.google",
+  "dev": "whois.nic.google",
+  "top": "whois.nic.top",
+  "xyz": "whois.nic.xyz",
+  "online": "whois.nic.online",
+  "site": "whois.nic.site",
+  "club": "whois.nic.club",
+  // Additional country code TLDs
   "rw": "whois.ricta.org.rw",
   "ge": "whois.nic.ge",
   "kr": "whois.kr",
@@ -52,7 +60,6 @@ const whoisServers = {
   "th": "whois.thnic.co.th",
   "ph": "whois.dot.ph",
   "vn": "whois.vnnic.vn",
-  "nz": "whois.srs.net.nz",
   "mx": "whois.mx",
   "ar": "whois.nic.ar",
   "cl": "whois.nic.cl",
@@ -209,7 +216,7 @@ module.exports = async (req, res) => {
     }
 
     // 更新域名格式验证，支持单字符域名和更多类型域名
-    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/;
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
     if (!domainRegex.test(domain)) {
       return res.status(400).json({ error: '无效的域名格式' });
     }

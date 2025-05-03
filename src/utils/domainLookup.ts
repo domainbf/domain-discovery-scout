@@ -1,6 +1,7 @@
 
 // Domain lookup utilities to optimize search and caching
 import { WhoisResult, queryWhois } from '@/api/whoisService';
+import { whoisServers } from '@/utils/whois-servers';
 
 // Simple in-memory cache for domain results
 const cache = new Map<string, { data: WhoisResult, timestamp: number }>();
@@ -60,5 +61,14 @@ export function isValidDomain(domain: string): boolean {
   const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
   const ipRegex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
   
-  return domainRegex.test(domain) || ipRegex.test(domain);
+  if (!domainRegex.test(domain) && !ipRegex.test(domain)) {
+    return false;
+  }
+  
+  // Additional check: verify if the TLD is in our supported list
+  const tld = domain.split('.').pop()?.toLowerCase();
+  if (!tld) return false;
+  
+  // Check if we support this TLD in our whois servers list
+  return tld in whoisServers;
 }

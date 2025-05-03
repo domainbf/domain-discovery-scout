@@ -291,7 +291,9 @@ async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
 // Query direct WHOIS (last resort)
 async function queryDirectWhois(domain: string): Promise<WhoisResult> {
   const tld = domain.split('.').pop()?.toLowerCase() || "";
-  const whoisServer = whoisServers[tld];
+  
+  // 直接使用从whois-servers.ts导入的服务器列表
+  const whoisServer = whoisServers[tld as keyof typeof whoisServers];
   
   if (!whoisServer) {
     return { 
@@ -461,7 +463,7 @@ function parseBasicWhoisText(text: string, domain: string): WhoisResult {
     for (const pattern of patternsList) {
       const match = text.match(pattern);
       if (match && match[1] && match[1].trim()) {
-        result[field as keyof WhoisResult] = match[1].trim();
+        (result as any)[field] = match[1].trim(); // Fix the type error by using type assertion
         // Also set legacy field names for backward compatibility
         if (field === 'created') result.creationDate = match[1].trim();
         if (field === 'expires') result.expiryDate = match[1].trim();

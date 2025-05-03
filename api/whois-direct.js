@@ -158,7 +158,7 @@ module.exports = async (req, res) => {
     }
 
     // 更新域名验证规则，支持单字符域名和国别域名
-    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/;
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
     if (!domainRegex.test(domain)) {
       return res.status(400).json({ error: '无效的域名格式' });
     }
