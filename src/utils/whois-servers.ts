@@ -43,7 +43,24 @@ export const whoisServers: Record<string, string> = {
   "xyz": "whois.nic.xyz",
   "online": "whois.nic.online",
   "site": "whois.nic.site",
-  "club": "whois.nic.club"
+  "club": "whois.nic.club",
+  // 添加更多国家顶级域名
+  "rw": "whois.ricta.org.rw",
+  "ge": "whois.nic.ge",
+  "kr": "whois.kr",
+  "hk": "whois.hkirc.hk",
+  "tw": "whois.twnic.net.tw",
+  "sg": "whois.sgnic.sg",
+  "my": "whois.mynic.my",
+  "id": "whois.id",
+  "th": "whois.thnic.co.th",
+  "ph": "whois.dot.ph",
+  "vn": "whois.vnnic.vn",
+  "nz": "whois.srs.net.nz",
+  "mx": "whois.mx",
+  "ar": "whois.nic.ar",
+  "cl": "whois.nic.cl",
+  "za": "whois.registry.net.za"
 };
 
 // RDAP endpoints for different TLDs

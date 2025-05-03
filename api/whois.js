@@ -1,3 +1,4 @@
+
 // Serverless function to handle WHOIS queries
 const net = require('net');
 
@@ -38,7 +39,24 @@ const whoisServers = {
   "pl": "whois.dns.pl",
   "be": "whois.dns.be",
   "br": "whois.registro.br",
-  "eu": "whois.eu"
+  "eu": "whois.eu",
+  // 添加更多国家顶级域名
+  "rw": "whois.ricta.org.rw",
+  "ge": "whois.nic.ge",
+  "kr": "whois.kr",
+  "hk": "whois.hkirc.hk",
+  "tw": "whois.twnic.net.tw",
+  "sg": "whois.sgnic.sg",
+  "my": "whois.mynic.my",
+  "id": "whois.id",
+  "th": "whois.thnic.co.th",
+  "ph": "whois.dot.ph",
+  "vn": "whois.vnnic.vn",
+  "nz": "whois.srs.net.nz",
+  "mx": "whois.mx",
+  "ar": "whois.nic.ar",
+  "cl": "whois.nic.cl",
+  "za": "whois.registry.net.za"
 };
 
 // Query WHOIS server via socket connection
@@ -190,8 +208,8 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: '请提供域名参数' });
     }
 
-    // Validate domain format
-    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
+    // 更新域名格式验证，支持单字符域名和更多类型域名
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/;
     if (!domainRegex.test(domain)) {
       return res.status(400).json({ error: '无效的域名格式' });
     }

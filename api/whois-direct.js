@@ -157,8 +157,8 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: '请提供WHOIS服务器参数' });
     }
 
-    // 验证域名格式
-    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
+    // 更新域名验证规则，支持单字符域名和国别域名
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/;
     if (!domainRegex.test(domain)) {
       return res.status(400).json({ error: '无效的域名格式' });
     }

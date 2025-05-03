@@ -1,3 +1,4 @@
+
 // WHOIS 查询服务 - 使用优化的查询系统，优先采用RDAP
 
 import { whoisServers, rdapBootstrap } from '@/utils/whois-servers';
@@ -9,7 +10,7 @@ export interface Contact {
   email?: string[];
   phone?: string[];
   address?: string;
-  country?: string; // Added country property to fix the TypeScript error
+  country?: string; 
 }
 
 export interface DNSData {
@@ -50,8 +51,8 @@ export interface WhoisResult {
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
-    // Validate domain format
-    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
+    // 更新域名格式验证，支持单字符域名和国别域名
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
     if (!domainRegex.test(domain)) {
       return { error: "域名格式无效" };
     }
@@ -313,39 +314,65 @@ async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      const responseText = await response.text();
-      let errorMessage = "Direct WHOIS API请求失败";
-      
+      // 尝试处理非标准响应
       try {
-        // Try to parse as JSON if possible
-        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
-          const errorJson = JSON.parse(responseText);
-          if (errorJson.error) {
-            errorMessage = errorJson.error;
-          } else if (errorJson.message) {
-            errorMessage = errorJson.message;
-          }
+        const responseText = await response.text();
+        
+        // 如果响应看起来像HTML而不是JSON，可能是API重定向或服务器错误
+        if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+          console.warn("收到HTML响应而不是JSON，尝试提取错误信息");
+          // 提取一些有用的错误信息，如果是API重定向产生的HTML
+          return {
+            error: `WHOIS服务器 ${whoisServer} 响应格式错误或无法连接`,
+            rawData: responseText.substring(0, 1000) // 只保留前1000个字符避免过大
+          };
         }
-      } catch (e) {
-        // If can't parse JSON, use the text response
+        
+        // 尝试解析JSON响应
+        let errorMessage = "Direct WHOIS API请求失败";
+        try {
+          if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+            const errorJson = JSON.parse(responseText);
+            if (errorJson.error) {
+              errorMessage = errorJson.error;
+            } else if (errorJson.message) {
+              errorMessage = errorJson.message;
+            }
+          }
+        } catch (e) {
+          // 解析失败，使用原始响应文本
+        }
+        
+        return {
+          error: errorMessage,
+          rawData: responseText
+        };
+      } catch (parseError) {
+        return {
+          error: `解析API响应失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+          rawData: `原始HTTP状态: ${response.status}`
+        };
+      }
+    }
+    
+    // 尝试解析响应为JSON
+    try {
+      const data = await response.json();
+      
+      if (data.error) {
+        return {
+          error: data.error,
+          rawData: data.message || "无错误详情"
+        };
       }
       
+      return data;
+    } catch (jsonError) {
       return {
-        error: errorMessage,
-        rawData: responseText
+        error: `解析WHOIS结果失败: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`,
+        rawData: "无法解析的JSON响应"
       };
     }
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      return {
-        error: data.error,
-        rawData: data.message || "无错误详情"
-      };
-    }
-    
-    return data;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return { error: "WHOIS API超时", rawData: "请求超时" };

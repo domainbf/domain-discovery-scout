@@ -40,9 +40,9 @@ const DomainSearch: React.FC<DomainSearchProps> = ({ onSearch, isLoading }) => {
       return;
     }
     
-    // 对IP地址不做格式验证，只针对域名做验证
+    // 修改域名验证规则，支持单字符域名，修正域名格式验证正则表达式
     if (!domain.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) && 
-        !domain.match(/^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9](\.[a-zA-Z]{2,})+$/)) {
+        !domain.match(/^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/)) {
       setError('请输入有效的域名或IP地址格式');
       return;
     }
@@ -77,7 +77,7 @@ const DomainSearch: React.FC<DomainSearchProps> = ({ onSearch, isLoading }) => {
           <div className="relative flex-grow">
             <Input
               type="text"
-              placeholder="输入域名，例如: example.com, 8.8.8.8"
+              placeholder="输入域名，例如: example.com, x.com, n.cn, 8.8.8.8"
               value={domain}
               onChange={handleInputChange}
               className="pl-4 pr-10 py-6 w-full rounded-lg border border-indigo-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 shadow-sm text-lg"
