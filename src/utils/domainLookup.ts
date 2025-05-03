@@ -55,7 +55,8 @@ export function clearLookupCache(): void {
  * @returns boolean indicating if the domain format is valid
  */
 export function isValidDomain(domain: string): boolean {
-  // 修改域名验证规则，支持单字符域名和国别域名
+  // Support single-character domains and country-code TLDs
+  // Format like: x.com, a.cn, t.io, etc.
   const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
   const ipRegex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
   

@@ -244,11 +244,14 @@ async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
       };
     }
     
-    try {
-      const responseText = await response.text();
-      
-      // Only try to parse if it looks like JSON
-      if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+    // Get response content type to check if it's JSON
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType && contentType.includes('application/json');
+    const responseText = await response.text();
+    
+    // Only try to parse if it's JSON content or looks like JSON
+    if (isJson || (responseText.trim().startsWith('{') || responseText.trim().startsWith('['))) {
+      try {
         const data = JSON.parse(responseText);
         
         // If API returned an error
@@ -261,16 +264,19 @@ async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
         
         // Return API result directly
         return data;
-      } else {
-        return {
-          error: "API响应格式无效(非JSON)",
+      } catch (parseError) {
+        return { 
+          error: `无法解析API响应JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
           rawData: responseText
         };
       }
-    } catch (error) {
-      return { 
-        error: `无法解析API响应: ${error instanceof Error ? error.message : String(error)}`,
-        rawData: String(error)
+    } else {
+      // Handle HTML or other non-JSON responses
+      return {
+        error: "API响应格式无效(非JSON)",
+        rawData: responseText.length > 500 ? 
+          responseText.substring(0, 500) + "... (response trimmed)" : 
+          responseText
       };
     }
   } catch (error) {
@@ -314,38 +320,41 @@ async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      // 尝试处理非标准响应
+      // Try to handle non-standard responses
       try {
         const responseText = await response.text();
         
-        // 如果响应看起来像HTML而不是JSON，可能是API重定向或服务器错误
+        // Check content type
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        
+        // If response looks like HTML rather than JSON, it may be an API redirect or server error
         if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
-          console.warn("收到HTML响应而不是JSON，尝试提取错误信息");
-          // 提取一些有用的错误信息，如果是API重定向产生的HTML
+          console.warn("Received HTML response instead of JSON, trying to extract error info");
           return {
             error: `WHOIS服务器 ${whoisServer} 响应格式错误或无法连接`,
-            rawData: responseText.substring(0, 1000) // 只保留前1000个字符避免过大
+            rawData: responseText.substring(0, 500) + "... (response trimmed)" // Only keep first 500 chars to avoid oversized
           };
         }
         
-        // 尝试解析JSON响应
-        let errorMessage = "Direct WHOIS API请求失败";
-        try {
-          if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        // Try to parse JSON response if it looks like JSON
+        if (isJson || responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+          try {
             const errorJson = JSON.parse(responseText);
-            if (errorJson.error) {
-              errorMessage = errorJson.error;
-            } else if (errorJson.message) {
-              errorMessage = errorJson.message;
-            }
+            return {
+              error: errorJson.error || `请求失败: ${response.status}`,
+              rawData: errorJson.message || errorJson.rawData || responseText
+            };
+          } catch (e) {
+            // Parse failed, use original response text
           }
-        } catch (e) {
-          // 解析失败，使用原始响应文本
         }
         
         return {
-          error: errorMessage,
-          rawData: responseText
+          error: `直接WHOIS API请求失败: ${response.status}`,
+          rawData: responseText.length > 500 ? 
+            responseText.substring(0, 500) + "... (response trimmed)" : 
+            responseText
         };
       } catch (parseError) {
         return {
@@ -355,23 +364,52 @@ async function queryDirectWhois(domain: string): Promise<WhoisResult> {
       }
     }
     
-    // 尝试解析响应为JSON
-    try {
-      const data = await response.json();
-      
-      if (data.error) {
+    // Get content type to check if it's JSON
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType && contentType.includes('application/json');
+    const responseText = await response.text();
+    
+    // Try to parse as JSON if it's JSON content or looks like JSON
+    if (isJson || (responseText.trim().startsWith('{') || responseText.trim().startsWith('['))) {
+      try {
+        const data = JSON.parse(responseText);
+        
+        if (data.error) {
+          return {
+            error: data.error,
+            rawData: data.message || "无错误详情"
+          };
+        }
+        
+        return data;
+      } catch (jsonError) {
         return {
-          error: data.error,
-          rawData: data.message || "无错误详情"
+          error: `解析WHOIS结果失败: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`,
+          rawData: responseText
+        };
+      }
+    } else {
+      // Handle HTML or other non-JSON responses
+      if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+        return {
+          error: "API返回了HTML而非JSON响应",
+          rawData: responseText.substring(0, 500) + "... (response trimmed)"
         };
       }
       
-      return data;
-    } catch (jsonError) {
-      return {
-        error: `解析WHOIS结果失败: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`,
-        rawData: "无法解析的JSON响应"
-      };
+      // If it's plain text, it might be a raw WHOIS result we can parse manually
+      try {
+        // Try to parse basic WHOIS info from plain text
+        const parsedWhois = parseBasicWhoisText(responseText, domain);
+        return parsedWhois;
+      } catch (parseError) {
+        return {
+          error: "无法解析服务器响应",
+          rawData: responseText.length > 500 ? 
+            responseText.substring(0, 500) + "... (response trimmed)" : 
+            responseText
+        };
+      }
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
@@ -379,6 +417,104 @@ async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     }
     throw error;
   }
+}
+
+// Simple function to parse basic WHOIS text when receiving non-JSON responses
+function parseBasicWhoisText(text: string, domain: string): WhoisResult {
+  const result: WhoisResult = {
+    domain,
+    source: 'direct-whois-text',
+    rawData: text
+  };
+  
+  // Define regex patterns for different WHOIS data fields
+  const patterns: Record<string, RegExp[]> = {
+    registrar: [
+      /Registrar:\s*(.*?)[\r\n]/i,
+      /Sponsoring Registrar:\s*(.*?)[\r\n]/i,
+      /注册商:\s*(.*?)[\r\n]/i
+    ],
+    created: [
+      /Creation Date:\s*(.*?)[\r\n]/i, 
+      /Created on:\s*(.*?)[\r\n]/i,
+      /Registration Date:\s*(.*?)[\r\n]/i,
+      /注册时间:\s*(.*?)[\r\n]/i,
+      /Registry Creation Date:\s*(.*?)[\r\n]/i
+    ],
+    expires: [
+      /Expir(?:y|ation) Date:\s*(.*?)[\r\n]/i,
+      /Registry Expiry Date:\s*(.*?)[\r\n]/i,
+      /Expiration Date:\s*(.*?)[\r\n]/i,
+      /到期时间:\s*(.*?)[\r\n]/i
+    ],
+    updated: [
+      /Updated Date:\s*(.*?)[\r\n]/i,
+      /Last Modified:\s*(.*?)[\r\n]/i,
+      /更新时间:\s*(.*?)[\r\n]/i,
+      /Last update:\s*(.*?)[\r\n]/i,
+      /Update Date:\s*(.*?)[\r\n]/i
+    ]
+  };
+  
+  // Process each pattern to extract information
+  for (const [field, patternsList] of Object.entries(patterns)) {
+    for (const pattern of patternsList) {
+      const match = text.match(pattern);
+      if (match && match[1] && match[1].trim()) {
+        result[field as keyof WhoisResult] = match[1].trim();
+        // Also set legacy field names for backward compatibility
+        if (field === 'created') result.creationDate = match[1].trim();
+        if (field === 'expires') result.expiryDate = match[1].trim();
+        if (field === 'updated') result.lastUpdated = match[1].trim();
+        break;
+      }
+    }
+  }
+  
+  // Extract nameservers
+  const nameserverPatterns = [
+    /Name Server:\s*(.*?)[\r\n]/ig,
+    /Nameservers?:\s*(.*?)[\r\n]/ig,
+    /域名服务器:\s*(.*?)[\r\n]/ig,
+    /nserver:\s*(.*?)[\r\n]/ig
+  ];
+  
+  const nameservers: string[] = [];
+  for (const pattern of nameserverPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      if (match[1] && match[1].trim()) {
+        nameservers.push(match[1].trim());
+      }
+    }
+  }
+  
+  if (nameservers.length > 0) {
+    result.nameservers = nameservers;
+  }
+  
+  // Extract status
+  const statusPatterns = [
+    /Status:\s*(.*?)[\r\n]/ig,
+    /Domain Status:\s*(.*?)[\r\n]/ig,
+    /状态:\s*(.*?)[\r\n]/ig
+  ];
+  
+  const statuses: string[] = [];
+  for (const pattern of statusPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      if (match[1] && match[1].trim()) {
+        statuses.push(match[1].trim());
+      }
+    }
+  }
+  
+  if (statuses.length > 0) {
+    result.status = statuses;
+  }
+  
+  return result;
 }
 
 // Convert the new domain-info API format to the legacy WhoisResult format for backward compatibility
