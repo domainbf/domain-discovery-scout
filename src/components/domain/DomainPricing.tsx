@@ -41,10 +41,11 @@ const DomainPricing: React.FC<DomainPricingProps> = ({ domain }) => {
         }
         
         const data = await response.json();
+        console.log('Nazhumi API返回数据:', data); // 添加日志以便调试
         
         setPricingInfo({
           available: data.available,
-          premium: data.premium,
+          premium: data.premium || false,
           registerPrice: data.registerPrice,
           renewPrice: data.renewPrice,
           currency: data.currency || 'CNY'

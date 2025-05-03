@@ -35,7 +35,11 @@ export const getDomainAge = (dateString?: string) => {
     const diffTime = Math.abs(today.getTime() - creationDate.getTime());
     const diffYears = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 365));
     
-    return diffYears > 0 ? `${diffYears}年域名` : "新注册域名";
+    if (diffYears === 0) return "新注册域名";
+    if (diffYears === 1) return "1年域名";
+    if (diffYears <= 5) return `${diffYears}年域名`;
+    if (diffYears <= 10) return `${diffYears}年域名`;
+    return `${diffYears}年老米`;
   } catch (e) {
     return null;
   }

@@ -55,7 +55,7 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
               <DateInfo 
                 label="创建日期"
                 date={formatDate(creationDate)}
-                additionalText={domainAge ? `域名年龄: ${domainAge}` : null}
+                additionalText={domainAge}
                 additionalTextClass="text-indigo-600"
               />
               
