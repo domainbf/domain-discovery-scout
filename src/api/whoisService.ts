@@ -249,6 +249,14 @@ async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     const isJson = contentType && contentType.includes('application/json');
     const responseText = await response.text();
     
+    // Check for HTML content first
+    if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+      return {
+        error: "API返回了HTML而非JSON响应",
+        rawData: responseText.substring(0, 500) + "... (response trimmed)"
+      };
+    }
+    
     // Only try to parse if it's JSON content or looks like JSON
     if (isJson || (responseText.trim().startsWith('{') || responseText.trim().startsWith('['))) {
       try {
@@ -271,7 +279,7 @@ async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
         };
       }
     } else {
-      // Handle HTML or other non-JSON responses
+      // Handle non-JSON responses
       return {
         error: "API响应格式无效(非JSON)",
         rawData: responseText.length > 500 ? 
@@ -302,7 +310,7 @@ async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     };
   }
   
-  const apiUrl = `/api/whois-direct?domain=${encodeURIComponent(domain)}&server=${encodeURIComponent(whoisServer)}`;
+  const apiUrl = `/api/whois?domain=${encodeURIComponent(domain)}`;
   
   console.log(`Trying direct WHOIS API with server ${whoisServer}...`);
   
@@ -371,6 +379,14 @@ async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     const isJson = contentType && contentType.includes('application/json');
     const responseText = await response.text();
     
+    // Check for HTML content first - most important check!
+    if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+      return {
+        error: "API返回了HTML而非JSON响应",
+        rawData: responseText.substring(0, 500) + "... (response trimmed)"
+      };
+    }
+    
     // Try to parse as JSON if it's JSON content or looks like JSON
     if (isJson || (responseText.trim().startsWith('{') || responseText.trim().startsWith('['))) {
       try {
@@ -385,22 +401,15 @@ async function queryDirectWhois(domain: string): Promise<WhoisResult> {
         
         return data;
       } catch (jsonError) {
-        return {
-          error: `解析WHOIS结果失败: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`,
-          rawData: responseText
-        };
+        // If JSON parsing fails, try to parse the raw WHOIS response
+        console.warn(`JSON parsing failed: ${jsonError}. Attempting to parse raw WHOIS text.`);
+        const parsedWhois = parseBasicWhoisText(responseText, domain);
+        return parsedWhois;
       }
     } else {
-      // Handle HTML or other non-JSON responses
-      if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
-        return {
-          error: "API返回了HTML而非JSON响应",
-          rawData: responseText.substring(0, 500) + "... (response trimmed)"
-        };
-      }
-      
       // If it's plain text, it might be a raw WHOIS result we can parse manually
       try {
+        console.log("Received plain text response, attempting to parse WHOIS format");
         // Try to parse basic WHOIS info from plain text
         const parsedWhois = parseBasicWhoisText(responseText, domain);
         return parsedWhois;
@@ -428,6 +437,17 @@ function parseBasicWhoisText(text: string, domain: string): WhoisResult {
     source: 'direct-whois-text',
     rawData: text
   };
+  
+  if (!text || text.trim() === '') {
+    result.error = "WHOIS服务器返回空响应";
+    return result;
+  }
+  
+  // Check if the response contains "No match" or similar phrases that indicate domain is not registered
+  if (text.match(/no match|not found|no data found|not registered|no entries found/i)) {
+    result.error = "域名未注册或无法找到记录";
+    return result;
+  }
   
   // Define regex patterns for different WHOIS data fields
   const patterns: Record<string, RegExp[]> = {
@@ -514,6 +534,13 @@ function parseBasicWhoisText(text: string, domain: string): WhoisResult {
   
   if (statuses.length > 0) {
     result.status = statuses;
+  }
+  
+  // 如果什么都没提取到但有原始数据，则设置基本信息
+  if (!result.registrar && !result.created && !result.expires && !result.nameservers && text.length > 0) {
+    // 至少显示一些基本信息
+    result.source = 'raw-whois';
+    result.domain = domain;
   }
   
   return result;

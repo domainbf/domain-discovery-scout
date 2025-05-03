@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileText } from "lucide-react";
+import { AlertTriangle, FileText, Server, Globe } from "lucide-react";
 
 interface ErrorResultProps {
   error: string;
@@ -9,6 +9,12 @@ interface ErrorResultProps {
 }
 
 const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
+  // 检测特定类型的错误以提供更好的用户反馈
+  const isServerError = error.includes('服务器') || error.includes('连接失败');
+  const isHtmlError = error.includes('HTML') || (rawData && rawData.includes('<!DOCTYPE html>'));
+  const isFormatError = error.includes('格式') || error.includes('解析');
+  const isNotFoundError = error.includes('未注册') || error.includes('not found') || error.includes('No match');
+  
   return (
     <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
       <div className="flex items-center text-red-600 mb-4">
@@ -17,13 +23,42 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
       </div>
       <p className="text-red-700">{error}</p>
       
+      {/* 根据错误类型提供更具体的帮助信息 */}
+      {isServerError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <Server className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>WHOIS服务器可能暂时不可用或拒绝了连接请求。请稍后再试。</p>
+        </div>
+      )}
+      
+      {isHtmlError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <Globe className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>服务器返回了HTML页面而不是WHOIS数据。此顶级域名可能需要通过Web界面查询。</p>
+        </div>
+      )}
+      
+      {isFormatError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <FileText className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>无法解析服务器返回的数据格式。请尝试使用其他查询方式。</p>
+        </div>
+      )}
+      
+      {isNotFoundError && (
+        <div className="mt-3 flex items-start text-sm text-gray-600">
+          <Globe className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>该域名可能未被注册，您可以考虑注册它。</p>
+        </div>
+      )}
+      
       {rawData && (
         <div className="mt-6">
           <Separator className="my-4" />
           <details className="group">
             <summary className="flex items-center cursor-pointer text-red-600 font-medium">
               <FileText className="h-4 w-4 mr-2" />
-              查看详细错误
+              查看详细错误信息
               <svg className="ml-2 h-5 w-5 group-open:rotate-180 transition-transform" 
                    xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />

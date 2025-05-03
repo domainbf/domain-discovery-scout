@@ -69,6 +69,8 @@ const whoisServers = {
 // Query WHOIS server via socket connection
 function queryWhoisServer(domain, server) {
   return new Promise((resolve, reject) => {
+    console.log(`尝试连接到WHOIS服务器: ${server} 查询域名: ${domain}`);
+    
     const client = net.createConnection({ port: 43, host: server }, () => {
       // WHOIS protocol: Send domain name followed by CRLF
       client.write(domain + '\r\n');
@@ -80,15 +82,18 @@ function queryWhoisServer(domain, server) {
     });
     
     client.on('end', () => {
+      console.log(`成功从 ${server} 获取到 ${domain} 的信息`);
       resolve(data);
     });
     
     client.on('error', (err) => {
+      console.error(`连接到 ${server} 失败:`, err);
       reject(err);
     });
     
     // Set timeout for the connection
     client.setTimeout(10000, () => {
+      console.error(`连接到 ${server} 超时`);
       client.destroy();
       reject(new Error('Connection timeout'));
     });
@@ -101,6 +106,12 @@ function parseWhoisResponse(response) {
   const result = {
     rawData: response
   };
+
+  // Check if the response contains "No match" or similar phrases
+  if (response.match(/no match|not found|no data found|not registered|no entries found/i)) {
+    result.error = "域名未注册或无法找到记录";
+    return result;
+  }
 
   // Define regex patterns for different WHOIS data fields
   const patterns = {
@@ -234,6 +245,22 @@ module.exports = async (req, res) => {
     try {
       // Query the WHOIS server
       const whoisResponse = await queryWhoisServer(domain, whoisServer);
+      
+      // Check if response is empty
+      if (!whoisResponse || whoisResponse.trim() === '') {
+        return res.status(200).json({
+          error: "WHOIS服务器返回空响应",
+          rawData: "No data returned from server"
+        });
+      }
+      
+      // Check if response contains HTML
+      if (whoisResponse.includes('<!DOCTYPE html>') || whoisResponse.includes('<html')) {
+        return res.status(200).json({
+          error: "WHOIS服务器返回了HTML而非预期的文本格式",
+          rawData: whoisResponse.substring(0, 500) + "... (response trimmed)"
+        });
+      }
       
       // Parse the response
       const parsedResult = parseWhoisResponse(whoisResponse);

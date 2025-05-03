@@ -9,6 +9,12 @@ function parseWhoisResponse(response) {
     rawData: response
   };
 
+  // Check if the response contains "No match" or similar phrases
+  if (response.match(/no match|not found|no data found|not registered|no entries found/i)) {
+    result.error = "域名未注册或无法找到记录";
+    return result;
+  }
+
   // 为不同的WHOIS数据字段定义正则表达式模式
   const patterns = {
     registrar: [
@@ -168,6 +174,22 @@ module.exports = async (req, res) => {
     try {
       // 查询WHOIS服务器
       const whoisResponse = await queryWhoisServer(domain, server);
+      
+      // 检查响应是否为空
+      if (!whoisResponse || whoisResponse.trim() === '') {
+        return res.status(200).json({
+          error: "WHOIS服务器返回空响应",
+          rawData: "No data returned from server"
+        });
+      }
+      
+      // 检查响应是否包含HTML
+      if (whoisResponse.includes('<!DOCTYPE html>') || whoisResponse.includes('<html')) {
+        return res.status(200).json({
+          error: "WHOIS服务器返回了HTML而非预期的文本格式",
+          rawData: whoisResponse.substring(0, 500) + "... (response trimmed)"
+        });
+      }
       
       // 解析响应
       const parsedResult = parseWhoisResponse(whoisResponse);
