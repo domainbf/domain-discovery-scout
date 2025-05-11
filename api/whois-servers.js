@@ -1,6 +1,8 @@
 
-// Local WHOIS servers configuration
-export const whoisServers: Record<string, string> = {
+// WHOIS servers list for API use
+// Consistent with src/utils/whois-servers.ts
+
+const whoisServers = {
   "com": "whois.verisign-grs.com",
   "net": "whois.verisign-grs.com",
   "org": "whois.pir.org",
@@ -32,6 +34,7 @@ export const whoisServers: Record<string, string> = {
   "bb": "whois.nic.bb",
   "fi": "whois.fi",
   "dk": "whois.dk-hostmaster.dk",
+  "nz": "whois.srs.net.nz",
   "pl": "whois.dns.pl",
   "be": "whois.dns.be",
   "br": "whois.registro.br",
@@ -43,9 +46,8 @@ export const whoisServers: Record<string, string> = {
   "online": "whois.nic.online",
   "site": "whois.nic.site",
   "club": "whois.nic.club",
-  // Additional country code TLDs
   "rw": "whois.ricta.org.rw",
-  "ge": "whois.nic.ge", // 注意: .ge 域名有特殊处理
+  "ge": "whois.nic.ge",
   "kr": "whois.kr",
   "hk": "whois.hkirc.hk",
   "tw": "whois.twnic.net.tw",
@@ -55,12 +57,10 @@ export const whoisServers: Record<string, string> = {
   "th": "whois.thnic.co.th",
   "ph": "whois.dot.ph",
   "vn": "whois.vnnic.vn",
-  "nz": "whois.srs.net.nz",
   "mx": "whois.mx",
   "ar": "whois.nic.ar",
   "cl": "whois.nic.cl",
   "za": "whois.registry.net.za",
-  // 新增多个常用TLD
   "ai": "whois.nic.ai",
   "ac": "whois.nic.ac",
   "ag": "whois.nic.ag",
@@ -134,20 +134,4 @@ export const whoisServers: Record<string, string> = {
   "xxx": "whois.nic.xxx"
 };
 
-// RDAP endpoints for different TLDs
-export const rdapEndpoints: Record<string, string> = {
-  "com": "https://rdap.verisign.com/com/v1/",
-  "net": "https://rdap.verisign.com/net/v1/",
-  "org": "https://rdap.publicinterestregistry.org/rdap/",
-  "info": "https://rdap.afilias.net/rdap/",
-  "biz": "https://rdap.bizregistry.net/rdap/",
-  "io": "https://rdap.nic.io/",
-  "app": "https://rdap.nominet.uk/app/",
-  "dev": "https://rdap.nominet.uk/dev/"
-};
-
-// Central RDAP bootstrap service
-export const rdapBootstrap = "https://rdap.org/domain/";
-
-// Special TLD handlers configuration (corresponding to specialTldHandlers in whois.js)
-export const specialTlds = ["ge"];
+module.exports = whoisServers;
