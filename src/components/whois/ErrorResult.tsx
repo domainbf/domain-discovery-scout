@@ -14,6 +14,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
   const isHtmlError = error.includes('HTML') || (rawData && rawData.includes('<!DOCTYPE html>'));
   const isFormatError = error.includes('格式') || error.includes('解析');
   const isNotFoundError = error.includes('未注册') || error.includes('not found') || error.includes('No match');
+  const isGeTldError = error.includes('ge') || (rawData && rawData.includes('.ge')) || error.toLowerCase().includes('ge.ge');
   
   return (
     <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
@@ -35,6 +36,13 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
         <div className="mt-3 flex items-start text-sm text-red-600">
           <Globe className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
           <p>服务器返回了HTML页面而不是WHOIS数据。此顶级域名可能需要通过Web界面查询。</p>
+        </div>
+      )}
+      
+      {isGeTldError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <Globe className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>.ge (格鲁吉亚)域名无法通过标准WHOIS协议查询，需要在其官方网站上查询。</p>
         </div>
       )}
       

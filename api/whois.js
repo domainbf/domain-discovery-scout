@@ -50,7 +50,7 @@ const whoisServers = {
   "club": "whois.nic.club",
   // Additional country code TLDs
   "rw": "whois.ricta.org.rw",
-  "ge": "whois.nic.ge",
+  "ge": "whois.nic.ge", // 格鲁吉亚域名服务器
   "kr": "whois.kr",
   "hk": "whois.hkirc.hk",
   "tw": "whois.twnic.net.tw",
@@ -64,6 +64,17 @@ const whoisServers = {
   "ar": "whois.nic.ar",
   "cl": "whois.nic.cl",
   "za": "whois.registry.net.za"
+};
+
+// 特殊TLD处理 - 某些TLD有特殊的查询要求
+const specialTldHandlers = {
+  "ge": function(domain) {
+    return {
+      error: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
+      rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`,
+      domain: domain
+    };
+  }
 };
 
 // Query WHOIS server via socket connection
@@ -101,15 +112,22 @@ function queryWhoisServer(domain, server) {
 }
 
 // Parse WHOIS response to extract important information
-function parseWhoisResponse(response) {
+function parseWhoisResponse(response, domain) {
   // Always include raw data for debugging and display
   const result = {
-    rawData: response
+    rawData: response,
+    domain: domain
   };
 
   // Check if the response contains "No match" or similar phrases
   if (response.match(/no match|not found|no data found|not registered|no entries found/i)) {
     result.error = "域名未注册或无法找到记录";
+    return result;
+  }
+
+  // Check if response contains HTML
+  if (response.includes('<!DOCTYPE html>') || response.includes('<html')) {
+    result.error = "WHOIS服务器返回了HTML而非预期的文本格式";
     return result;
   }
 
@@ -234,10 +252,21 @@ module.exports = async (req, res) => {
 
     // Extract the TLD
     const tld = domain.split('.').pop().toLowerCase();
+    
+    // Check if this is a special TLD with custom handling
+    if (specialTldHandlers[tld]) {
+      console.log(`使用特殊处理程序处理 .${tld} 域名: ${domain}`);
+      const result = specialTldHandlers[tld](domain);
+      return res.status(200).json(result);
+    }
+    
     const whoisServer = whoisServers[tld];
     
     if (!whoisServer) {
-      return res.status(400).json({ error: `不支持的顶级域名: .${tld}，请在whoisServers对象中添加对应的WHOIS服务器` });
+      return res.status(400).json({ 
+        error: `不支持的顶级域名: .${tld}`,
+        rawData: `未找到 .${tld} 的WHOIS服务器配置，请在whoisServers中添加对应服务器。`
+      });
     }
     
     console.log(`正在查询WHOIS服务器 ${whoisServer} 获取 ${domain} 的信息...`);
@@ -250,35 +279,38 @@ module.exports = async (req, res) => {
       if (!whoisResponse || whoisResponse.trim() === '') {
         return res.status(200).json({
           error: "WHOIS服务器返回空响应",
-          rawData: "No data returned from server"
+          rawData: "No data returned from server",
+          domain: domain
         });
       }
       
       // Check if response contains HTML
       if (whoisResponse.includes('<!DOCTYPE html>') || whoisResponse.includes('<html')) {
         return res.status(200).json({
-          error: "WHOIS服务器返回了HTML而非预期的文本格式",
-          rawData: whoisResponse.substring(0, 500) + "... (response trimmed)"
+          error: `WHOIS服务器 ${whoisServer} 返回了HTML而非预期的文本格式`,
+          rawData: whoisResponse.substring(0, 500) + "... (response trimmed)",
+          domain: domain
         });
       }
       
       // Parse the response
-      const parsedResult = parseWhoisResponse(whoisResponse);
+      const parsedResult = parseWhoisResponse(whoisResponse, domain);
       
       // Return the result as JSON
       return res.status(200).json(parsedResult);
     } catch (serverError) {
       console.error(`连接到WHOIS服务器 ${whoisServer} 失败:`, serverError);
-      return res.status(500).json({
+      return res.status(200).json({
         error: `连接到WHOIS服务器失败: ${serverError.message}`,
-        message: `无法连接到 ${whoisServer}，请确认该服务器是否可用。详细错误: ${serverError.toString()}`
+        rawData: `无法连接到 ${whoisServer}，请确认该服务器是否可用。详细错误: ${serverError.toString()}`,
+        domain: domain
       });
     }
   } catch (error) {
     console.error('WHOIS查询错误:', error);
     return res.status(500).json({
       error: `查询出错: ${error.message}`,
-      message: error.toString()
+      rawData: error.toString()
     });
   }
 };
