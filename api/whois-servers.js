@@ -47,7 +47,7 @@ const whoisServers = {
   "site": "whois.nic.site",
   "club": "whois.nic.club",
   "rw": "whois.ricta.org.rw",
-  "ge": "whois.nic.ge",
+  "ge": "whois.nic.ge", // 注意: .ge 域名有特殊处理
   "kr": "whois.kr",
   "hk": "whois.hkirc.hk",
   "tw": "whois.twnic.net.tw",
@@ -134,4 +134,8 @@ const whoisServers = {
   "xxx": "whois.nic.xxx"
 };
 
+// Special TLD handlers - matching those defined in the whois-utils.js
+const specialTlds = ["ge", "cn", "jp", "kr"];
+
 module.exports = whoisServers;
+module.exports.specialTlds = specialTlds;

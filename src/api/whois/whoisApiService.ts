@@ -1,13 +1,68 @@
 
 // WHOIS API Service - Handles API calls to the WHOIS service
 import { WhoisResult } from '../types/WhoisTypes';
-import { whoisServers, specialTlds } from '@/utils/whois-servers';
+import { whoisServers, specialTlds, isSpecialTld } from '@/utils/whois-servers';
 import { parseBasicWhoisText } from './whoisParser';
+
+// Special TLD handling functions
+const specialTldHandlers: Record<string, (domain: string) => WhoisResult> = {
+  "ge": (domain) => {
+    return {
+      domain: domain,
+      registrar: "Georgian Domain Name Registry",
+      source: "special-handler",
+      status: ["registryLocked"],
+      nameservers: ["使用官方网站查询"],
+      created: "请访问官方网站查询",
+      updated: "请访问官方网站查询",
+      expires: "请访问官方网站查询",
+      message: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
+      rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`
+    };
+  },
+  "cn": (domain) => {
+    // 中国域名需要特殊处理
+    return {
+      domain: domain,
+      registrar: "中国互联网络信息中心CNNIC",
+      source: "special-handler-cn",
+      message: `查询中国域名(.cn)可能会受到限制，正在尝试通过标准WHOIS查询`,
+      nameservers: ["请等待查询完成..."]
+    };
+  },
+  "jp": (domain) => {
+    return {
+      domain: domain,
+      registrar: "Japan Registry Services",
+      source: "special-handler-jp",
+      message: `日本域名(.jp)可能需要通过官方网站查询更多信息: https://jprs.jp/`,
+      nameservers: ["正在尝试通过标准WHOIS查询..."]
+    };
+  }
+};
 
 /**
  * Query the domain-info API (backup method)
  */
 export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
+  const tld = domain.split('.').pop()?.toLowerCase() || "";
+  
+  // 先检查是否需要特殊处理
+  if (isSpecialTld(tld) && specialTldHandlers[tld]) {
+    console.log(`使用特殊处理程序处理 .${tld} 域名: ${domain}`);
+    // 返回特殊处理程序的初始结果
+    const specialResult = specialTldHandlers[tld](domain);
+    
+    // 对于某些特殊TLD，我们仍然尝试标准查询作为备用
+    if (tld === "cn" || tld === "jp") {
+      console.log(`尝试为特殊TLD .${tld} 执行标准查询`);
+      // 继续执行标准查询，如果失败返回特殊处理结果
+    } else {
+      // 对于完全不支持标准查询的TLD，直接返回特殊结果
+      return specialResult;
+    }
+  }
+
   const apiUrl = `/api/domain-info?domain=${encodeURIComponent(domain)}`;
   
   console.log("Requesting domain-info API:", apiUrl);
@@ -20,7 +75,8 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'Domain-Info-Tool/1.0'
       },
       signal: controller.signal,
       cache: 'no-cache'
@@ -43,7 +99,8 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
       
       return { 
         error: `API请求失败: ${response.status}`,
-        rawData: errorText
+        rawData: errorText,
+        domain
       };
     }
     
@@ -56,7 +113,8 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
       return {
         error: "API返回了HTML而非JSON响应",
-        rawData: responseText.substring(0, 500) + "... (response trimmed)"
+        rawData: responseText.substring(0, 500) + "... (response trimmed)",
+        domain
       };
     }
     
@@ -69,8 +127,14 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
         if (data.error) {
           return {
             error: data.error,
-            rawData: data.message || data.rawData || "无错误详情"
+            rawData: data.message || data.rawData || "无错误详情",
+            domain
           };
+        }
+        
+        // Ensure domain is set
+        if (!data.domain) {
+          data.domain = domain;
         }
         
         // Return API result directly
@@ -78,21 +142,28 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
       } catch (parseError) {
         return { 
           error: `无法解析API响应JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-          rawData: responseText
+          rawData: responseText,
+          domain
         };
       }
     } else {
-      // Handle non-JSON responses
-      return {
-        error: "API响应格式无效(非JSON)",
-        rawData: responseText.length > 500 ? 
-          responseText.substring(0, 500) + "... (response trimmed)" : 
-          responseText
-      };
+      // Handle non-JSON responses - try to parse as WHOIS text
+      try {
+        return parseBasicWhoisText(responseText, domain);
+      } catch (parseError) {
+        // If parsing fails, return error
+        return {
+          error: "API响应格式无效(非JSON)",
+          rawData: responseText.length > 500 ? 
+            responseText.substring(0, 500) + "... (response trimmed)" : 
+            responseText,
+          domain
+        };
+      }
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      return { error: "API查询超时", rawData: "请求超时" };
+      return { error: "API查询超时", rawData: "请求超时", domain };
     }
     
     throw error;
@@ -106,29 +177,18 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
   const tld = domain.split('.').pop()?.toLowerCase() || "";
   
   // Check if this is a special TLD that needs custom handling
-  if (specialTlds.includes(tld)) {
+  if (isSpecialTld(tld) && specialTldHandlers[tld]) {
     console.log(`Special TLD handler for .${tld} domain: ${domain}`);
-    if (tld === "ge") {
-      return {
-        domain: domain,
-        registrar: "Georgian Domain Name Registry",
-        source: "special-handler",
-        status: ["registryLocked"],
-        nameservers: ["使用官方网站查询"],
-        created: "请访问官方网站查询",
-        updated: "请访问官方网站查询",
-        expires: "请访问官方网站查询",
-        rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`
-      };
-    }
+    return specialTldHandlers[tld](domain);
   }
   
-  const whoisServer = whoisServers[tld as keyof typeof whoisServers];
+  const whoisServer = whoisServers[tld];
   
   if (!whoisServer) {
     return { 
       error: `不支持的顶级域名: .${tld}`,
-      rawData: `No WHOIS server defined for .${tld}`
+      rawData: `No WHOIS server defined for .${tld}`,
+      domain
     };
   }
   
@@ -143,7 +203,8 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'User-Agent': 'Domain-Info-Tool/1.0'
       },
       signal: controller.signal,
       cache: 'no-cache'
@@ -165,7 +226,8 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
           console.warn("Received HTML response instead of JSON, trying to extract error info");
           return {
             error: `WHOIS服务器 ${whoisServer} 响应格式错误或无法连接`,
-            rawData: responseText.substring(0, 500) + "... (response trimmed)" 
+            rawData: responseText.substring(0, 500) + "... (response trimmed)",
+            domain 
           };
         }
         
@@ -175,7 +237,8 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
             const errorJson = JSON.parse(responseText);
             return {
               error: errorJson.error || `请求失败: ${response.status}`,
-              rawData: errorJson.message || errorJson.rawData || responseText
+              rawData: errorJson.message || errorJson.rawData || responseText,
+              domain
             };
           } catch (e) {
             // Parse failed, use original response text
@@ -186,12 +249,14 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
           error: `直接WHOIS API请求失败: ${response.status}`,
           rawData: responseText.length > 500 ? 
             responseText.substring(0, 500) + "... (response trimmed)" : 
-            responseText
+            responseText,
+          domain
         };
       } catch (parseError) {
         return {
           error: `解析API响应失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-          rawData: `原始HTTP状态: ${response.status}`
+          rawData: `原始HTTP状态: ${response.status}`,
+          domain
         };
       }
     }
@@ -205,7 +270,8 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
       return {
         error: "API返回了HTML而非JSON响应",
-        rawData: responseText.substring(0, 500) + "... (response trimmed)"
+        rawData: responseText.substring(0, 500) + "... (response trimmed)",
+        domain
       };
     }
     
@@ -217,8 +283,14 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
         if (data.error) {
           return {
             error: data.error,
-            rawData: data.message || "无错误详情"
+            rawData: data.message || "无错误详情",
+            domain
           };
+        }
+        
+        // Ensure domain is set
+        if (!data.domain) {
+          data.domain = domain;
         }
         
         return data;
@@ -240,13 +312,14 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
           error: "无法解析服务器响应",
           rawData: responseText.length > 500 ? 
             responseText.substring(0, 500) + "... (response trimmed)" : 
-            responseText
+            responseText,
+          domain
         };
       }
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      return { error: "WHOIS API超时", rawData: "请求超时" };
+      return { error: "WHOIS API超时", rawData: "请求超时", domain };
     }
     throw error;
   }

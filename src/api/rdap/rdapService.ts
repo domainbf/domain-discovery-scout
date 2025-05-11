@@ -1,7 +1,7 @@
 
 // RDAP Service - Handles RDAP protocol lookups
 import { WhoisResult, Contact } from '../types/WhoisTypes';
-import { rdapBootstrap } from '@/utils/whois-servers';
+import { rdapBootstrap, rdapEndpoints, isRdapSupported } from '@/utils/whois-servers';
 
 /**
  * Query domain information using RDAP protocol
@@ -9,7 +9,24 @@ import { rdapBootstrap } from '@/utils/whois-servers';
  * @returns Promise with WhoisResult
  */
 export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
-  const rdapUrl = `${rdapBootstrap}${encodeURIComponent(domain)}`;
+  const tld = domain.split('.').pop()?.toLowerCase() || "";
+  
+  // Check if RDAP is supported for this TLD
+  if (!isRdapSupported(tld)) {
+    console.log(`RDAP not supported for .${tld} domain`);
+    return {
+      error: `RDAP协议不支持 .${tld} 域名`,
+      domain
+    };
+  }
+  
+  // Use direct RDAP endpoint if available or fallback to bootstrap
+  let rdapUrl = rdapBootstrap + encodeURIComponent(domain);
+  
+  // If we have a specific RDAP endpoint for this TLD, use it
+  if (tld in rdapEndpoints) {
+    rdapUrl = `${rdapEndpoints[tld]}domain/${encodeURIComponent(domain)}`;
+  }
   
   console.log("Requesting RDAP info:", rdapUrl);
   
@@ -22,6 +39,7 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
+        'User-Agent': 'Domain-Info-Tool/1.0'
       },
       signal: controller.signal,
       cache: 'no-cache'
@@ -30,9 +48,19 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
     clearTimeout(timeoutId);
     
     if (!response.ok) {
+      // Check if this was a 404 - domain might not exist
+      if (response.status === 404) {
+        return {
+          domain,
+          error: "域名未注册或RDAP服务器中无记录",
+          source: 'rdap'
+        };
+      }
+      
       return {
         error: `RDAP请求失败: ${response.status}`,
-        rawData: await response.text()
+        rawData: await response.text(),
+        domain
       };
     }
     
@@ -49,7 +77,7 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
     if (data.entities) {
       for (const entity of data.entities) {
         if (entity.roles && entity.roles.includes('registrar')) {
-          result.registrar = entity.vcardArray?.[1]?.find(arr => arr[0] === 'fn')?.[3] || 
+          result.registrar = entity.vcardArray?.[1]?.find((arr: any[]) => arr[0] === 'fn')?.[3] || 
                              entity.publicIds?.[0]?.identifier ||
                              entity.handle;
         }
@@ -68,6 +96,16 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
               } else if (entry[0] === 'tel') {
                 registrant.phone = registrant.phone || [];
                 registrant.phone.push(entry[3]);
+              } else if (entry[0] === 'adr') {
+                try {
+                  // Try to construct an address from the parts
+                  const addressParts = entry[3] || [];
+                  if (Array.isArray(addressParts) && addressParts.length > 0) {
+                    registrant.address = addressParts.filter(Boolean).join(", ");
+                  }
+                } catch (e) {
+                  console.warn("Error parsing RDAP address:", e);
+                }
               }
             }
             
@@ -88,7 +126,7 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
         } else if (event.eventAction === 'expiration') {
           result.expires = event.eventDate;
           result.expiryDate = event.eventDate;
-        } else if (event.eventAction === 'last changed') {
+        } else if (event.eventAction === 'last changed' || event.eventAction === 'last update') {
           result.updated = event.eventDate;
           result.lastUpdated = event.eventDate;
         }
@@ -105,12 +143,22 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
       result.nameservers = data.nameservers.map((ns: any) => ns.ldhName || ns);
     }
     
+    // Extract DNSSEC information
+    if (data.secureDNS) {
+      result.dnssec = Boolean(data.secureDNS.delegationSigned);
+    }
+    
     return result;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      return { error: "RDAP查询超时", rawData: "请求超时" };
+      return { error: "RDAP查询超时", rawData: "请求超时", domain };
     }
     
-    throw error;
+    console.error(`RDAP error for ${domain}:`, error);
+    return {
+      domain,
+      error: `RDAP查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      source: 'rdap'
+    };
   }
 }

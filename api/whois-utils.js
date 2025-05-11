@@ -16,7 +16,7 @@ function parseWhoisResponse(response, domain) {
   }
 
   // Check if the response contains "No match" or similar phrases
-  if (response.match(/no match|not found|no data found|not registered|no entries found|not available/i)) {
+  if (response.match(/no match|not found|no data found|not registered|no entries found|not available|没有找到|not exist/i)) {
     result.error = "域名未注册或无法找到记录";
     return result;
   }
@@ -33,7 +33,8 @@ function parseWhoisResponse(response, domain) {
       /Registrar:\s*(.*?)[\r\n]/i,
       /Sponsoring Registrar:\s*(.*?)[\r\n]/i,
       /注册商:\s*(.*?)[\r\n]/i,
-      /registrar:\s*(.*?)[\r\n]/i
+      /registrar:\s*(.*?)[\r\n]/i,
+      /Registrar Name:\s*(.*?)[\r\n]/i
     ],
     creationDate: [
       /Creation Date:\s*(.*?)[\r\n]/i, 
@@ -42,7 +43,8 @@ function parseWhoisResponse(response, domain) {
       /注册时间:\s*(.*?)[\r\n]/i,
       /Registry Creation Date:\s*(.*?)[\r\n]/i,
       /Created:\s*(.*?)[\r\n]/i,
-      /created:\s*(.*?)[\r\n]/i
+      /created:\s*(.*?)[\r\n]/i,
+      /Domain Create Date:\s*(.*?)[\r\n]/i
     ],
     expiryDate: [
       /Expir(?:y|ation) Date:\s*(.*?)[\r\n]/i,
@@ -50,7 +52,8 @@ function parseWhoisResponse(response, domain) {
       /Expiration Date:\s*(.*?)[\r\n]/i,
       /到期时间:\s*(.*?)[\r\n]/i,
       /expires:\s*(.*?)[\r\n]/i,
-      /Expires:\s*(.*?)[\r\n]/i
+      /Expires:\s*(.*?)[\r\n]/i,
+      /Domain Expiration Date:\s*(.*?)[\r\n]/i
     ],
     lastUpdated: [
       /Updated Date:\s*(.*?)[\r\n]/i,
@@ -59,7 +62,8 @@ function parseWhoisResponse(response, domain) {
       /Last update(?:d)?:\s*(.*?)[\r\n]/i,
       /Update Date:\s*(.*?)[\r\n]/i,
       /modified:\s*(.*?)[\r\n]/i,
-      /Changed:\s*(.*?)[\r\n]/i
+      /Changed:\s*(.*?)[\r\n]/i,
+      /Domain Last Updated Date:\s*(.*?)[\r\n]/i
     ],
     status: [
       /Status:\s*(.*?)[\r\n]/i,
@@ -72,7 +76,8 @@ function parseWhoisResponse(response, domain) {
       /Nameservers?:\s*(.*?)[\r\n]/ig,
       /域名服务器:\s*(.*?)[\r\n]/ig,
       /nserver:\s*(.*?)[\r\n]/ig,
-      /name server:\s*(.*?)[\r\n]/ig
+      /name server:\s*(.*?)[\r\n]/ig,
+      /DNS服务器:\s*(.*?)[\r\n]/ig
     ],
     registrant: [
       /Registrant(?:\s+Organization)?:\s*(.*?)[\r\n]/i,
@@ -82,11 +87,16 @@ function parseWhoisResponse(response, domain) {
     ],
     registrantEmail: [
       /Registrant Email:\s*(.*?)[\r\n]/i,
-      /注册人邮箱:\s*(.*?)[\r\n]/i
+      /注册人邮箱:\s*(.*?)[\r\n]/i,
+      /Registrant Contact Email:\s*(.*?)[\r\n]/i
     ],
     registrantPhone: [
       /Registrant Phone(?:\s+Number)?:\s*(.*?)[\r\n]/i,
-      /注册人电话:\s*(.*?)[\r\n]/i
+      /注册人电话:\s*(.*?)[\r\n]/i,
+      /Registrant Contact Phone:\s*(.*?)[\r\n]/i
+    ],
+    dnssec: [
+      /DNSSEC:\s*(.*?)[\r\n]/i
     ]
   };
 
@@ -119,6 +129,15 @@ function parseWhoisResponse(response, domain) {
       }
       if (statuses.length > 0) {
         result.status = statuses;
+      }
+    } else if (field === 'dnssec') {
+      for (const pattern of patternsList) {
+        const match = response.match(pattern);
+        if (match && match[1] && match[1].trim()) {
+          const dnssecValue = match[1].trim().toLowerCase();
+          result.dnssec = dnssecValue === 'yes' || dnssecValue === 'true' || dnssecValue === 'signed';
+          break;
+        }
       }
     } else {
       for (const pattern of patternsList) {
@@ -156,6 +175,9 @@ function parseWhoisResponse(response, domain) {
       } else if (key.includes('status')) {
         if (!result.status) result.status = [];
         result.status.push(value);
+      } else if (key.includes('dnssec')) {
+        const dnssecValue = value.toLowerCase();
+        result.dnssec = dnssecValue === 'yes' || dnssecValue === 'true' || dnssecValue === 'signed';
       }
     }
   }
@@ -219,7 +241,7 @@ function queryWhoisServer(domain, server) {
     });
     
     // Set timeout for the connection (increased for slower servers)
-    client.setTimeout(20000, () => {
+    client.setTimeout(25000, () => {
       console.error(`连接到 ${server} 超时`);
       client.destroy();
       reject(new Error('Connection timeout'));
@@ -235,12 +257,43 @@ const specialTldHandlers = {
       registrar: "Georgian Domain Name Registry",
       source: "special-handler",
       status: ["registryLocked"],
-      nameservers: ["使用官方网站查询"],
+      nameServers: ["使用官方网站查询"],
       created: "请访问官方网站查询",
       updated: "请访问官方网站查询",
       expires: "请访问官方网站查询",
       message: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
       rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`
+    };
+  },
+  "cn": function(domain) {
+    // 中国域名需要特殊处理
+    return {
+      domain: domain,
+      registrar: "中国互联网络信息中心CNNIC",
+      source: "special-handler-cn",
+      message: `查询中国域名(.cn)可能会受到限制，请访问 http://whois.cnnic.cn/ 查询`,
+      nameServers: ["请访问官方网站查询..."],
+      rawData: `中国域名管理机构CNNIC可能对WHOIS查询有限制，建议访问 http://whois.cnnic.cn/ 查询 ${domain} 信息。`
+    };
+  },
+  "jp": function(domain) {
+    return {
+      domain: domain,
+      registrar: "Japan Registry Services",
+      source: "special-handler-jp",
+      message: `日本域名(.jp)可能需要通过官方网站查询更多信息: https://jprs.jp/`,
+      nameServers: ["请访问官方网站查询..."],
+      rawData: `日本域名的WHOIS信息可能在标准查询中不完整，建议访问 https://jprs.jp/ 查询 ${domain} 完整信息。`
+    };
+  },
+  "kr": function(domain) {
+    return {
+      domain: domain,
+      registrar: "Korea Internet & Security Agency",
+      source: "special-handler-kr",
+      message: `韩国域名(.kr)可能需要通过官方网站查询详细信息: https://krnic.or.kr/`,
+      nameServers: ["请访问官方网站查询..."],
+      rawData: `韩国域名的WHOIS信息可能在标准查询中不完整，建议访问 https://krnic.or.kr/ 查询 ${domain} 完整信息。`
     };
   }
 };

@@ -60,7 +60,7 @@ export const whoisServers: Record<string, string> = {
   "ar": "whois.nic.ar",
   "cl": "whois.nic.cl",
   "za": "whois.registry.net.za",
-  // 新增多个常用TLD
+  // 常用TLD
   "ai": "whois.nic.ai",
   "ac": "whois.nic.ac",
   "ag": "whois.nic.ag",
@@ -143,11 +143,44 @@ export const rdapEndpoints: Record<string, string> = {
   "biz": "https://rdap.bizregistry.net/rdap/",
   "io": "https://rdap.nic.io/",
   "app": "https://rdap.nominet.uk/app/",
-  "dev": "https://rdap.nominet.uk/dev/"
+  "dev": "https://rdap.nominet.uk/dev/",
+  "xyz": "https://rdap.centralnic.com/xyz/",
+  "online": "https://rdap.centralnic.com/online/",
+  "site": "https://rdap.centralnic.com/site/",
+  "club": "https://rdap.nic.club/"
 };
 
 // Central RDAP bootstrap service
 export const rdapBootstrap = "https://rdap.org/domain/";
 
-// Special TLD handlers configuration (corresponding to specialTldHandlers in whois.js)
-export const specialTlds = ["ge"];
+// Special TLD handlers configuration
+export const specialTlds: string[] = ["ge", "cn", "jp", "kr"];
+
+// TLD categories for better organization and handling
+export const tldCategories: Record<string, string[]> = {
+  "common": ["com", "net", "org", "info", "biz", "io"],
+  "country": ["cn", "de", "uk", "fr", "jp", "ru", "au", "ca", "br", "es", "it", "nl"],
+  "new": ["app", "dev", "top", "xyz", "online", "site", "club", "digital", "email"],
+  "special": ["ge", "kr", "jp", "cn", "ru"] // These have unique handling requirements
+};
+
+/**
+ * Check if a TLD is supported for WHOIS queries
+ */
+export function isSupportedTld(tld: string): boolean {
+  return tld in whoisServers;
+}
+
+/**
+ * Check if a TLD supports RDAP protocol
+ */
+export function isRdapSupported(tld: string): boolean {
+  return tld in rdapEndpoints || tld === "com" || tld === "net";
+}
+
+/**
+ * Check if a TLD requires special handling
+ */
+export function isSpecialTld(tld: string): boolean {
+  return specialTlds.includes(tld);
+}

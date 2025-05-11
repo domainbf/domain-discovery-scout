@@ -1,22 +1,41 @@
 
 import React from 'react';
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock } from "lucide-react";
+import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock, ExternalLink } from "lucide-react";
 
 interface ErrorResultProps {
   error: string;
   rawData?: string;
+  domain?: string;
 }
 
-const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
+const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => {
   // 检测特定类型的错误以提供更好的用户反馈
   const isServerError = error.includes('服务器') || error.includes('连接失败');
   const isHtmlError = error.includes('HTML') || (rawData && rawData.includes('<!DOCTYPE html>'));
   const isFormatError = error.includes('格式') || error.includes('解析');
   const isNotFoundError = error.includes('未注册') || error.includes('not found') || error.includes('No match');
-  const isGeTldError = error.includes('ge') || (rawData && rawData.includes('.ge')) || error.toLowerCase().includes('ge.ge');
   const isTimeoutError = error.includes('超时') || error.includes('timeout');
   const isJsonError = error.includes('JSON') || error.includes('解析');
+  
+  // 检测特殊TLD错误
+  const tld = domain?.split('.').pop()?.toLowerCase() || "";
+  
+  // 根据TLD类型提供特定指导
+  const isGeTldError = tld === 'ge' || error.includes('ge') || (rawData && rawData.includes('.ge'));
+  const isCnTldError = tld === 'cn' || error.includes('cn') || (rawData && rawData.includes('.cn'));
+  const isJpTldError = tld === 'jp' || error.includes('jp') || (rawData && rawData.includes('.jp'));
+  
+  // 生成官方查询链接
+  const getOfficialLink = () => {
+    if (isGeTldError) return 'https://registration.ge/';
+    if (isCnTldError) return 'http://whois.cnnic.cn/';
+    if (isJpTldError) return 'https://jprs.jp/';
+    return '';
+  };
+  
+  const officialLink = getOfficialLink();
+  const hasTldError = isGeTldError || isCnTldError || isJpTldError;
   
   return (
     <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
@@ -55,10 +74,24 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
         </div>
       )}
       
-      {isGeTldError && (
+      {hasTldError && officialLink && (
         <div className="mt-3 flex items-start text-sm text-red-600">
           <InfoIcon className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-          <p>.ge (格鲁吉亚)域名需要通过特殊方式查询，已自动处理返回基本信息。如需详细信息，请访问: <a href="https://registration.ge/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">https://registration.ge/</a></p>
+          <div>
+            <p>
+              {isGeTldError && '.ge (格鲁吉亚)域名需要通过特殊方式查询，无法通过标准WHOIS获取详细信息。'}
+              {isCnTldError && '.cn (中国)域名查询可能受到限制，标准WHOIS可能无法获取完整信息。'}
+              {isJpTldError && '.jp (日本)域名可能需要通过官方网站查询以获取完整信息。'}
+            </p>
+            <a 
+              href={officialLink} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="flex items-center text-blue-600 hover:underline mt-2"
+            >
+              访问官方查询网站 <ExternalLink className="h-3 w-3 ml-1" />
+            </a>
+          </div>
         </div>
       )}
       
