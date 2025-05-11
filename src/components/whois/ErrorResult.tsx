@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileText, Server, Globe } from "lucide-react";
+import { AlertTriangle, FileText, Server, Globe, InfoIcon } from "lucide-react";
 
 interface ErrorResultProps {
   error: string;
@@ -15,6 +15,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
   const isFormatError = error.includes('格式') || error.includes('解析');
   const isNotFoundError = error.includes('未注册') || error.includes('not found') || error.includes('No match');
   const isGeTldError = error.includes('ge') || (rawData && rawData.includes('.ge')) || error.toLowerCase().includes('ge.ge');
+  const isTimeoutError = error.includes('超时') || error.includes('timeout');
   
   return (
     <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
@@ -32,6 +33,13 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
         </div>
       )}
       
+      {isTimeoutError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <Server className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>查询超时，WHOIS服务器响应过慢或不可用。请稍后再试。</p>
+        </div>
+      )}
+      
       {isHtmlError && (
         <div className="mt-3 flex items-start text-sm text-red-600">
           <Globe className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
@@ -41,8 +49,8 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
       
       {isGeTldError && (
         <div className="mt-3 flex items-start text-sm text-red-600">
-          <Globe className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-          <p>.ge (格鲁吉亚)域名无法通过标准WHOIS协议查询，需要在其官方网站上查询。</p>
+          <InfoIcon className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>.ge (格鲁吉亚)域名需要通过其官方网站查询: <a href="https://registration.ge/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">https://registration.ge/</a></p>
         </div>
       )}
       

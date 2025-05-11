@@ -77,7 +77,7 @@ const specialTldHandlers = {
   }
 };
 
-// Query WHOIS server via socket connection
+// Query WHOIS server via socket connection with improved error handling
 function queryWhoisServer(domain, server) {
   return new Promise((resolve, reject) => {
     console.log(`尝试连接到WHOIS服务器: ${server} 查询域名: ${domain}`);
@@ -88,13 +88,21 @@ function queryWhoisServer(domain, server) {
     });
     
     let data = '';
+    let receivedData = false;
+    
     client.on('data', (chunk) => {
+      receivedData = true;
       data += chunk.toString();
     });
     
     client.on('end', () => {
-      console.log(`成功从 ${server} 获取到 ${domain} 的信息`);
-      resolve(data);
+      if (receivedData) {
+        console.log(`成功从 ${server} 获取到 ${domain} 的信息`);
+        resolve(data);
+      } else {
+        console.warn(`连接到 ${server} 关闭但未接收到数据`);
+        reject(new Error('No data received'));
+      }
     });
     
     client.on('error', (err) => {
@@ -103,7 +111,7 @@ function queryWhoisServer(domain, server) {
     });
     
     // Set timeout for the connection
-    client.setTimeout(10000, () => {
+    client.setTimeout(15000, () => {
       console.error(`连接到 ${server} 超时`);
       client.destroy();
       reject(new Error('Connection timeout'));
@@ -111,13 +119,19 @@ function queryWhoisServer(domain, server) {
   });
 }
 
-// Parse WHOIS response to extract important information
+// Parse WHOIS response to extract important information with improved parsing
 function parseWhoisResponse(response, domain) {
   // Always include raw data for debugging and display
   const result = {
     rawData: response,
     domain: domain
   };
+
+  // Check for empty response
+  if (!response || response.trim() === '') {
+    result.error = "WHOIS服务器返回空响应";
+    return result;
+  }
 
   // Check if the response contains "No match" or similar phrases
   if (response.match(/no match|not found|no data found|not registered|no entries found/i)) {
@@ -211,6 +225,35 @@ function parseWhoisResponse(response, domain) {
     }
   }
 
+  // If no data was extracted but we have raw text, try alternative patterns
+  if (!result.registrar && !result.creationDate && !result.nameServers) {
+    // Try to extract any data from key-value patterns like "Key: Value"
+    const keyValuePattern = /^([^:]+):\s*(.+?)$/gm;
+    let match;
+    while ((match = keyValuePattern.exec(response)) !== null) {
+      const key = match[1].trim().toLowerCase();
+      const value = match[2].trim();
+      
+      if (!value) continue;
+      
+      if (key.includes('registrar')) {
+        result.registrar = value;
+      } else if (key.includes('created') || key.includes('registered') || key.includes('creation')) {
+        result.creationDate = value;
+      } else if (key.includes('expir') || key.includes('renewal')) {
+        result.expiryDate = value;
+      } else if (key.includes('updated') || key.includes('modified')) {
+        result.lastUpdated = value;
+      } else if (key.includes('name server') || key.includes('nameserver') || key.includes('nserver')) {
+        if (!result.nameServers) result.nameServers = [];
+        result.nameServers.push(value);
+      } else if (key.includes('status')) {
+        if (!result.status) result.status = [];
+        result.status.push(value);
+      }
+    }
+  }
+
   return result;
 }
 
@@ -265,7 +308,8 @@ module.exports = async (req, res) => {
     if (!whoisServer) {
       return res.status(400).json({ 
         error: `不支持的顶级域名: .${tld}`,
-        rawData: `未找到 .${tld} 的WHOIS服务器配置，请在whoisServers中添加对应服务器。`
+        rawData: `未找到 .${tld} 的WHOIS服务器配置，请在whoisServers中添加对应服务器。`,
+        domain: domain
       });
     }
     
@@ -296,6 +340,11 @@ module.exports = async (req, res) => {
       // Parse the response
       const parsedResult = parseWhoisResponse(whoisResponse, domain);
       
+      // Make sure domain is included in the result
+      if (!parsedResult.domain) {
+        parsedResult.domain = domain;
+      }
+      
       // Return the result as JSON
       return res.status(200).json(parsedResult);
     } catch (serverError) {
@@ -308,9 +357,10 @@ module.exports = async (req, res) => {
     }
   } catch (error) {
     console.error('WHOIS查询错误:', error);
-    return res.status(500).json({
+    return res.status(200).json({
       error: `查询出错: ${error.message}`,
-      rawData: error.toString()
+      rawData: error.toString(),
+      domain: domain || "unknown"
     });
   }
 };
