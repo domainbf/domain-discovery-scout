@@ -70,9 +70,16 @@ const whoisServers = {
 const specialTldHandlers = {
   "ge": function(domain) {
     return {
-      error: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
-      rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`,
-      domain: domain
+      domain: domain,
+      registrar: "Georgian Domain Name Registry",
+      source: "special-handler",
+      status: ["registryLocked"],
+      nameservers: ["使用官方网站查询"],
+      created: "请访问官方网站查询",
+      updated: "请访问官方网站查询",
+      expires: "请访问官方网站查询",
+      message: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
+      rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`
     };
   }
 };
@@ -110,8 +117,8 @@ function queryWhoisServer(domain, server) {
       reject(err);
     });
     
-    // Set timeout for the connection
-    client.setTimeout(15000, () => {
+    // Set timeout for the connection (increased for slower servers)
+    client.setTimeout(20000, () => {
       console.error(`连接到 ${server} 超时`);
       client.destroy();
       reject(new Error('Connection timeout'));
@@ -123,8 +130,8 @@ function queryWhoisServer(domain, server) {
 function parseWhoisResponse(response, domain) {
   // Always include raw data for debugging and display
   const result = {
-    rawData: response,
-    domain: domain
+    domain: domain,
+    rawData: response
   };
 
   // Check for empty response
@@ -134,7 +141,7 @@ function parseWhoisResponse(response, domain) {
   }
 
   // Check if the response contains "No match" or similar phrases
-  if (response.match(/no match|not found|no data found|not registered|no entries found/i)) {
+  if (response.match(/no match|not found|no data found|not registered|no entries found|not available/i)) {
     result.error = "域名未注册或无法找到记录";
     return result;
   }
@@ -150,43 +157,53 @@ function parseWhoisResponse(response, domain) {
     registrar: [
       /Registrar:\s*(.*?)[\r\n]/i,
       /Sponsoring Registrar:\s*(.*?)[\r\n]/i,
-      /注册商:\s*(.*?)[\r\n]/i
+      /注册商:\s*(.*?)[\r\n]/i,
+      /registrar:\s*(.*?)[\r\n]/i
     ],
     creationDate: [
       /Creation Date:\s*(.*?)[\r\n]/i, 
       /Created on:\s*(.*?)[\r\n]/i,
       /Registration Date:\s*(.*?)[\r\n]/i,
       /注册时间:\s*(.*?)[\r\n]/i,
-      /Registry Creation Date:\s*(.*?)[\r\n]/i
+      /Registry Creation Date:\s*(.*?)[\r\n]/i,
+      /Created:\s*(.*?)[\r\n]/i,
+      /created:\s*(.*?)[\r\n]/i
     ],
     expiryDate: [
       /Expir(?:y|ation) Date:\s*(.*?)[\r\n]/i,
       /Registry Expiry Date:\s*(.*?)[\r\n]/i,
       /Expiration Date:\s*(.*?)[\r\n]/i,
-      /到期时间:\s*(.*?)[\r\n]/i
+      /到期时间:\s*(.*?)[\r\n]/i,
+      /expires:\s*(.*?)[\r\n]/i,
+      /Expires:\s*(.*?)[\r\n]/i
     ],
     lastUpdated: [
       /Updated Date:\s*(.*?)[\r\n]/i,
       /Last Modified:\s*(.*?)[\r\n]/i,
       /更新时间:\s*(.*?)[\r\n]/i,
-      /Last update:\s*(.*?)[\r\n]/i,
-      /Update Date:\s*(.*?)[\r\n]/i
+      /Last update(?:d)?:\s*(.*?)[\r\n]/i,
+      /Update Date:\s*(.*?)[\r\n]/i,
+      /modified:\s*(.*?)[\r\n]/i,
+      /Changed:\s*(.*?)[\r\n]/i
     ],
     status: [
       /Status:\s*(.*?)[\r\n]/i,
       /Domain Status:\s*(.*?)[\r\n]/i,
-      /状态:\s*(.*?)[\r\n]/i
+      /状态:\s*(.*?)[\r\n]/i,
+      /status:\s*(.*?)[\r\n]/ig
     ],
     nameServers: [
       /Name Server:\s*(.*?)[\r\n]/ig,
       /Nameservers?:\s*(.*?)[\r\n]/ig,
       /域名服务器:\s*(.*?)[\r\n]/ig,
-      /nserver:\s*(.*?)[\r\n]/ig
+      /nserver:\s*(.*?)[\r\n]/ig,
+      /name server:\s*(.*?)[\r\n]/ig
     ],
     registrant: [
       /Registrant(?:\s+Organization)?:\s*(.*?)[\r\n]/i,
       /注册人:\s*(.*?)[\r\n]/i,
-      /Registrant Name:\s*(.*?)[\r\n]/i
+      /Registrant Name:\s*(.*?)[\r\n]/i,
+      /registrant:\s*(.*?)[\r\n]/i
     ],
     registrantEmail: [
       /Registrant Email:\s*(.*?)[\r\n]/i,
@@ -213,6 +230,20 @@ function parseWhoisResponse(response, domain) {
       }
       if (nameServers.length > 0) {
         result.nameServers = nameServers;
+      }
+    } else if (field === 'status') {
+      const statuses = [];
+      for (const pattern of patternsList) {
+        let match;
+        const regex = new RegExp(pattern.source, 'gi'); // Global match for multiple statuses
+        while ((match = regex.exec(response)) !== null) {
+          if (match[1] && match[1].trim()) {
+            statuses.push(match[1].trim());
+          }
+        }
+      }
+      if (statuses.length > 0) {
+        result.status = statuses;
       }
     } else {
       for (const pattern of patternsList) {
@@ -254,6 +285,26 @@ function parseWhoisResponse(response, domain) {
     }
   }
 
+  // 如果仍然没有提取到关键信息但原始数据非空，则确保至少包含域名
+  if (!result.registrar && !result.creationDate && !result.nameServers && response.length > 10) {
+    result.source = "raw-whois";
+    // 尝试匹配服务器特定的响应格式
+    const lines = response.split('\n');
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (trimmedLine.length > 5 && !trimmedLine.startsWith('#') && !trimmedLine.startsWith('%')) {
+        // 尝试根据行内容猜测信息类型
+        if (trimmedLine.toLowerCase().includes('registration') || trimmedLine.toLowerCase().includes('date')) {
+          if (!result.creationDate) result.creationDate = trimmedLine;
+        } else if (trimmedLine.toLowerCase().includes('registrar')) {
+          if (!result.registrar) result.registrar = trimmedLine;
+        } else if (trimmedLine.toLowerCase().includes('name server')) {
+          if (!result.nameServers) result.nameServers = [trimmedLine];
+        }
+      }
+    }
+  }
+
   return result;
 }
 
@@ -277,9 +328,11 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: '只支持 GET 和 POST 请求' });
   }
 
+  let domain = null;
+
   try {
     // Get domain from query parameter or request body
-    const domain = (req.method === 'GET') 
+    domain = (req.method === 'GET') 
       ? req.query.domain 
       : (req.body ? req.body.domain : null);
 
@@ -306,10 +359,10 @@ module.exports = async (req, res) => {
     const whoisServer = whoisServers[tld];
     
     if (!whoisServer) {
-      return res.status(400).json({ 
+      return res.status(200).json({ 
+        domain: domain,
         error: `不支持的顶级域名: .${tld}`,
-        rawData: `未找到 .${tld} 的WHOIS服务器配置，请在whoisServers中添加对应服务器。`,
-        domain: domain
+        rawData: `未找到 .${tld} 的WHOIS服务器配置，请在whoisServers中添加对应服务器。`
       });
     }
     
@@ -322,18 +375,18 @@ module.exports = async (req, res) => {
       // Check if response is empty
       if (!whoisResponse || whoisResponse.trim() === '') {
         return res.status(200).json({
+          domain: domain,
           error: "WHOIS服务器返回空响应",
-          rawData: "No data returned from server",
-          domain: domain
+          rawData: "No data returned from server"
         });
       }
       
       // Check if response contains HTML
       if (whoisResponse.includes('<!DOCTYPE html>') || whoisResponse.includes('<html')) {
         return res.status(200).json({
+          domain: domain,
           error: `WHOIS服务器 ${whoisServer} 返回了HTML而非预期的文本格式`,
-          rawData: whoisResponse.substring(0, 500) + "... (response trimmed)",
-          domain: domain
+          rawData: whoisResponse.substring(0, 500) + "... (response trimmed)"
         });
       }
       
@@ -350,17 +403,17 @@ module.exports = async (req, res) => {
     } catch (serverError) {
       console.error(`连接到WHOIS服务器 ${whoisServer} 失败:`, serverError);
       return res.status(200).json({
+        domain: domain,
         error: `连接到WHOIS服务器失败: ${serverError.message}`,
-        rawData: `无法连接到 ${whoisServer}，请确认该服务器是否可用。详细错误: ${serverError.toString()}`,
-        domain: domain
+        rawData: `无法连接到 ${whoisServer}，请确认该服务器是否可用。详细错误: ${serverError.toString()}`
       });
     }
   } catch (error) {
     console.error('WHOIS查询错误:', error);
     return res.status(200).json({
+      domain: domain || "unknown",
       error: `查询出错: ${error.message}`,
-      rawData: error.toString(),
-      domain: domain || "unknown"
+      rawData: error.toString()
     });
   }
 };

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileText, Server, Globe, InfoIcon } from "lucide-react";
+import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock } from "lucide-react";
 
 interface ErrorResultProps {
   error: string;
@@ -16,6 +16,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
   const isNotFoundError = error.includes('未注册') || error.includes('not found') || error.includes('No match');
   const isGeTldError = error.includes('ge') || (rawData && rawData.includes('.ge')) || error.toLowerCase().includes('ge.ge');
   const isTimeoutError = error.includes('超时') || error.includes('timeout');
+  const isJsonError = error.includes('JSON') || error.includes('解析');
   
   return (
     <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
@@ -35,7 +36,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
       
       {isTimeoutError && (
         <div className="mt-3 flex items-start text-sm text-red-600">
-          <Server className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <Clock className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
           <p>查询超时，WHOIS服务器响应过慢或不可用。请稍后再试。</p>
         </div>
       )}
@@ -47,10 +48,17 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData }) => {
         </div>
       )}
       
+      {isJsonError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <FileText className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>无法解析JSON响应，请检查服务端返回格式是否正确。</p>
+        </div>
+      )}
+      
       {isGeTldError && (
         <div className="mt-3 flex items-start text-sm text-red-600">
           <InfoIcon className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-          <p>.ge (格鲁吉亚)域名需要通过其官方网站查询: <a href="https://registration.ge/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">https://registration.ge/</a></p>
+          <p>.ge (格鲁吉亚)域名需要通过特殊方式查询，已自动处理返回基本信息。如需详细信息，请访问: <a href="https://registration.ge/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">https://registration.ge/</a></p>
         </div>
       )}
       

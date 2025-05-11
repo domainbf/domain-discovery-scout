@@ -28,18 +28,27 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
     console.log(`Fetching fresh result for ${normalizedDomain}`);
     const result = await queryWhois(normalizedDomain);
     
-    // Cache the result if it's valid (no errors)
-    if (!result.error) {
-      cache.set(normalizedDomain, {
-        data: result,
-        timestamp: Date.now()
-      });
-    }
+    // 确保总是返回格式一致的结构
+    const formattedResult: WhoisResult = {
+      domain: normalizedDomain,
+      ...result
+    };
     
-    return result;
+    // Cache the result even if it has errors (to prevent repeated failing requests)
+    cache.set(normalizedDomain, {
+      data: formattedResult,
+      timestamp: Date.now()
+    });
+    
+    return formattedResult;
   } catch (error) {
     console.error(`Error in domain lookup: ${error}`);
-    throw error;
+    // 返回一个标准的错误结构
+    return {
+      domain: normalizedDomain,
+      error: `查询失败: ${error instanceof Error ? error.message : String(error)}`,
+      rawData: String(error)
+    };
   }
 }
 
@@ -48,6 +57,7 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
  */
 export function clearLookupCache(): void {
   cache.clear();
+  console.log("Domain lookup cache cleared");
 }
 
 /**
@@ -71,4 +81,19 @@ export function isValidDomain(domain: string): boolean {
   
   // Check if we support this TLD in our whois servers list
   return tld in whoisServers;
+}
+
+/**
+ * Get formatted domain status display text
+ * @param status Status code or array of status codes
+ * @returns Formatted status text
+ */
+export function formatDomainStatus(status: string | string[]): string {
+  if (!status) return '未知';
+  
+  if (Array.isArray(status)) {
+    return status.length > 0 ? status[0] : '未知';
+  }
+  
+  return status;
 }
