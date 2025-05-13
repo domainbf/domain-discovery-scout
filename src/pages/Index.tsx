@@ -1,18 +1,40 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DomainSearch from '@/components/DomainSearch';
 import WhoisResults from '@/components/WhoisResults';
 import { WhoisResult } from '@/api/whoisService';
 import { toast, domainToast } from "@/components/ui/use-toast";
-import { MegaphoneIcon } from 'lucide-react';
-import { lookupDomain, isValidDomain } from '@/utils/domainLookup';
+import { MegaphoneIcon, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
+import { lookupDomain, isValidDomain, isWellKnownDomain } from '@/utils/domainLookup';
 import DomainPricing from '@/components/domain/DomainPricing';
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchedDomain, setSearchedDomain] = useState('');
   const [whoisData, setWhoisData] = useState<WhoisResult | null>(null);
   const [searchAttempted, setSearchAttempted] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<'online' | 'offline' | 'unknown'>('unknown');
+
+  // Monitor network status
+  useEffect(() => {
+    const updateNetworkStatus = () => {
+      setNetworkStatus(navigator.onLine ? 'online' : 'offline');
+    };
+
+    // Set initial status
+    updateNetworkStatus();
+
+    // Add event listeners
+    window.addEventListener('online', updateNetworkStatus);
+    window.addEventListener('offline', updateNetworkStatus);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('online', updateNetworkStatus);
+      window.removeEventListener('offline', updateNetworkStatus);
+    };
+  }, []);
 
   const handleSearch = async (domain: string) => {
     if (!domain || !domain.trim()) {
@@ -24,6 +46,18 @@ const Index = () => {
     if (!isValidDomain(domain)) {
       domainToast.formatError();
       return;
+    }
+
+    // Check network status first
+    if (networkStatus === 'offline') {
+      domainToast.offlineError();
+      
+      // If it's a well-known domain, we can try to use fallback data
+      if (isWellKnownDomain(domain)) {
+        domainToast.usingFallbackData();
+      } else {
+        return; // Don't proceed with search if offline and no fallback
+      }
     }
 
     setIsLoading(true);
@@ -42,10 +76,12 @@ const Index = () => {
         console.error('查询返回错误:', result.error);
         
         // Show appropriate toast based on error type
-        if (result.error.includes('网络') || result.error.includes('连接')) {
+        if (result.error.includes('网络') || result.error.includes('连接') || result.error.includes('CORS')) {
           domainToast.networkError();
         } else if (result.error.includes('服务器')) {
           domainToast.serverError();
+        } else if (result.source === 'fallback-data') {
+          domainToast.fallbackData(domain);
         } else {
           domainToast.error(result.error);
         }
@@ -81,6 +117,17 @@ const Index = () => {
           <MegaphoneIcon size={18} className="text-gray-500 mr-2 flex-shrink-0" />
           <p className="text-sm text-gray-600">我们不存储不记录所有查询内容</p>
         </div>
+
+        {/* 网络状态提示 */}
+        {networkStatus === 'offline' && (
+          <Alert variant="destructive" className="mb-4 animate-pulse">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="flex items-center">
+              <WifiOff size={16} className="mr-2" />
+              您当前处于离线状态，无法进行网络查询。某些知名域名将使用缓存数据显示。
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="relative z-10">
           <DomainSearch onSearch={handleSearch} isLoading={isLoading} />

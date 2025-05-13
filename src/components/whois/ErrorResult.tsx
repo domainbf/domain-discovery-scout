@@ -1,8 +1,9 @@
 
 import React from 'react';
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock, ExternalLink, WifiOff, ShieldAlert } from "lucide-react";
+import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock, ExternalLink, WifiOff, ShieldAlert, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ErrorResultProps {
   error: string;
@@ -21,6 +22,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
   const isNetworkError = error.includes('网络') || error.includes('CORS') || error.includes('connect') || error.includes('Load failed');
   const isAllMethodsFailedError = error.includes('所有查询方法') || error.includes('无法通过任何渠道');
   const isApiError = error.includes('API') || error.includes('500');
+  const isCorsError = error.includes('CORS') || error.includes('跨域');
   
   // 检测特殊TLD错误
   const tld = domain?.split('.').pop()?.toLowerCase() || "";
@@ -58,6 +60,10 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
       {
         name: 'DomainTools',
         url: `https://whois.domaintools.com/${domain}`
+      },
+      {
+        name: 'Whois.com',
+        url: `https://www.whois.com/whois/${domain}`
       }
     ];
   };
@@ -71,8 +77,11 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
     if (isAllMethodsFailedError) {
       return "由于网络原因或查询限制，无法通过多种渠道获取该域名信息，请通过下方链接在其他网站尝试查询。";
     }
+    if (isCorsError) {
+      return "浏览器的跨域策略限制了直接查询WHOIS服务器，请使用代理服务或在下方使用其他工具查询。";
+    }
     if (isNetworkError) {
-      return "当前网络环境可能存在访问限制或CORS策略问题，请尝试使用其他域名查询工具。";
+      return "当前网络环境可能存在访问限制或连接问题，请检查网络连接后重试或使用其他域名查询工具。";
     }
     if (isApiError) {
       return "查询API暂时无法使用，可能是服务器负载过高或维护中，请稍后再试。";
@@ -82,6 +91,9 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
     }
     return "可以尝试使用其他在线工具查询该域名信息。";
   };
+
+  // Check if we have a pattern match error (common with the error: "The string did not match the expected pattern.")
+  const isPatternMatchError = rawData?.includes("expected pattern") || error.includes("expected pattern");
   
   return (
     <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
@@ -91,11 +103,35 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
       </div>
       <p className="text-red-700">{error}</p>
       
-      {/* 根据错误类型提供更具体的帮助信息 */}
+      {/* Network connectivity check alert */}
       {isNetworkError && (
+        <Alert variant="destructive" className="mt-3 bg-red-100 border-red-200">
+          <AlertDescription className="flex items-center text-sm">
+            <WifiOff className="h-4 w-4 mr-2 flex-shrink-0" />
+            <span>请检查您的网络连接是否正常。当前可能无法连接到查询服务器。</span>
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {/* CORS specific guidance */}
+      {isCorsError && (
         <div className="mt-3 flex items-start text-sm text-red-600">
-          <WifiOff className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-          <p>网络连接问题，无法访问WHOIS/RDAP服务器。可能是CORS策略限制或网络连接问题。</p>
+          <ShieldAlert className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <div>
+            <p>浏览器的安全策略(CORS)阻止了直接查询WHOIS服务器。这是一种保护机制，不是应用程序错误。</p>
+            <p className="mt-1">解决方法：使用支持CORS的API或代理服务，或尝试下方的外部查询工具。</p>
+          </div>
+        </div>
+      )}
+      
+      {/* Pattern match error */}
+      {isPatternMatchError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <FileText className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <div>
+            <p>域名格式验证错误："The string did not match the expected pattern"。这通常是由于查询参数格式不正确导致的。</p>
+            <p className="mt-1">请尝试使用标准格式的域名，如"example.com"而非"http://example.com"或其他非标准格式。</p>
+          </div>
         </div>
       )}
       
@@ -166,6 +202,23 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
         <div className="mt-3 flex items-start text-sm text-gray-600">
           <Globe className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
           <p>该域名可能未被注册，您可以考虑注册它。</p>
+        </div>
+      )}
+      
+      {/* 网络诊断工具 */}
+      {isNetworkError && (
+        <div className="mt-4 bg-white/70 p-4 rounded-lg border border-gray-100">
+          <h4 className="font-medium text-gray-800 mb-2 flex items-center">
+            <Radio className="h-4 w-4 mr-2" />
+            网络诊断
+          </h4>
+          <p className="text-sm text-gray-600 mb-3">尝试以下网络诊断步骤:</p>
+          <ol className="list-decimal pl-5 text-sm text-gray-600 space-y-1">
+            <li>检查您的网络连接是否稳定</li>
+            <li>确认您不是使用代理或VPN（可能会影响WHOIS查询）</li>
+            <li>尝试刷新页面或稍后再试</li>
+            <li>如果问题持续，请使用下方的其他查询工具</li>
+          </ol>
         </div>
       )}
       

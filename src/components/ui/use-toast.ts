@@ -37,6 +37,34 @@ const domainToast = {
       description: "请输入有效的域名格式",
       variant: "destructive",
     });
+  },
+  offlineError: () => {
+    toast({
+      title: "您当前处于离线状态",
+      description: "无法连接到查询服务器，请检查您的网络连接",
+      variant: "destructive",
+    });
+  },
+  usingFallbackData: () => {
+    toast({
+      title: "使用缓存数据",
+      description: "由于网络问题，将使用本地缓存的数据（可能不是最新）",
+      variant: "warning",
+    });
+  },
+  fallbackData: (domain: string) => {
+    toast({
+      title: "使用备用数据",
+      description: `由于查询失败，显示的 ${domain} 信息可能不是最新`,
+      variant: "warning",
+    });
+  },
+  corsError: () => {
+    toast({
+      title: "CORS策略限制",
+      description: "浏览器跨域策略阻止了查询请求，尝试使用其他查询方式",
+      variant: "destructive",
+    });
   }
 };
 

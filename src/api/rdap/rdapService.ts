@@ -1,3 +1,4 @@
+
 // RDAP Service - Handles RDAP protocol lookups
 import { WhoisResult, Contact } from '../types/WhoisTypes';
 import { rdapBootstrap, rdapEndpoints, isRdapSupported } from '@/utils/whois-servers';
@@ -35,6 +36,21 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
   
   try {
     console.log("RDAP fetch started...");
+    
+    // First try using fetch with no-cors to test connectivity
+    try {
+      const testResponse = await fetch(rdapUrl, {
+        method: 'HEAD',
+        mode: 'no-cors',
+        cache: 'no-cache'
+      });
+      console.log("RDAP server reachable");
+    } catch (testError) {
+      console.warn("RDAP server not reachable in no-cors mode:", testError);
+      // Continue anyway as this was just a test
+    }
+    
+    // Now do the actual request
     const response = await fetch(rdapUrl, {
       method: 'GET',
       headers: {
@@ -58,18 +74,49 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
         };
       }
       
-      const responseText = await response.text();
-      console.log("RDAP error response:", responseText.substring(0, 200));
+      // Try to get more detailed error information
+      let errorMessage = `RDAP请求失败: ${response.status} - ${response.statusText}`;
+      let responseText = "";
+      
+      try {
+        responseText = await response.text();
+        console.log("RDAP error response:", responseText.substring(0, 200));
+        
+        // Try to parse as JSON if it looks like JSON
+        if (responseText.trim().startsWith('{')) {
+          try {
+            const errorJson = JSON.parse(responseText);
+            if (errorJson.errorCode || errorJson.error || errorJson.message) {
+              errorMessage = `RDAP错误: ${errorJson.errorCode || ""} ${errorJson.error || errorJson.message || ""}`;
+            }
+          } catch (e) {
+            // Not valid JSON
+          }
+        }
+      } catch (e) {
+        console.error("Failed to read RDAP error response:", e);
+      }
       
       return {
-        error: `RDAP请求失败: ${response.status} - ${responseText.substring(0, 100)}`,
-        rawData: responseText,
+        error: errorMessage,
+        rawData: responseText || `状态码: ${response.status}`,
         domain
       };
     }
     
-    const data = await response.json();
-    console.log("RDAP data received successfully");
+    // Try to parse the JSON response
+    let data;
+    try {
+      data = await response.json();
+      console.log("RDAP data received successfully");
+    } catch (jsonError) {
+      console.error("Failed to parse RDAP JSON:", jsonError);
+      return {
+        domain,
+        error: `RDAP响应解析错误: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`,
+        rawData: await response.text()
+      };
+    }
     
     // Parse RDAP response
     const result: WhoisResult = {
@@ -155,6 +202,8 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
     
     return result;
   } catch (error) {
+    clearTimeout(timeoutId);
+    
     if (error instanceof DOMException && error.name === 'AbortError') {
       console.log("RDAP query timed out");
       return { error: "RDAP查询超时", rawData: "请求超时", domain };
@@ -169,15 +218,22 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
       // Network errors like CORS or connection issues
       if (error.message === "Load failed" || 
           error.message.includes("NetworkError") ||
-          error.message.includes("Failed to fetch")) {
+          error.message.includes("Failed to fetch") ||
+          error.message.includes("CORS")) {
         errorMessage = `RDAP网络连接错误: 可能由于CORS策略限制或网络连接问题导致无法连接到RDAP服务器`;
+        
+        // Add suggestion for CORS issues
+        if (error.message.includes("CORS")) {
+          errorMessage += `\n建议: 尝试使用其他查询方式或通过代理服务器查询`;
+        }
       }
     }
     
     return {
       domain,
       error: errorMessage,
-      source: 'rdap'
+      source: 'rdap',
+      rawData: String(error)
     };
   }
 }
