@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import DomainSearch from '@/components/DomainSearch';
 import WhoisResults from '@/components/WhoisResults';
 import { WhoisResult } from '@/api/whoisService';
-import { toast } from "@/components/ui/use-toast";
+import { toast, domainToast } from "@/components/ui/use-toast";
 import { MegaphoneIcon } from 'lucide-react';
 import { lookupDomain, isValidDomain } from '@/utils/domainLookup';
 import DomainPricing from '@/components/domain/DomainPricing';
@@ -12,30 +12,24 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchedDomain, setSearchedDomain] = useState('');
   const [whoisData, setWhoisData] = useState<WhoisResult | null>(null);
+  const [searchAttempted, setSearchAttempted] = useState(false);
 
   const handleSearch = async (domain: string) => {
     if (!domain || !domain.trim()) {
-      toast({
-        title: "输入错误",
-        description: "请输入域名后再查询",
-        variant: "destructive",
-      });
+      domainToast.formatError();
       return;
     }
 
     // Pre-validate domain format to save API calls
     if (!isValidDomain(domain)) {
-      toast({
-        title: "格式错误",
-        description: "请输入有效的域名格式",
-        variant: "destructive",
-      });
+      domainToast.formatError();
       return;
     }
 
     setIsLoading(true);
     setSearchedDomain(domain);
     setWhoisData(null); // Clear previous results
+    setSearchAttempted(true);
     
     try {
       console.log(`开始查询域名: ${domain}`);
@@ -46,26 +40,24 @@ const Index = () => {
       
       if (result.error) {
         console.error('查询返回错误:', result.error);
-        toast({
-          title: "查询失败",
-          description: result.error,
-          variant: "destructive",
-        });
+        
+        // Show appropriate toast based on error type
+        if (result.error.includes('网络') || result.error.includes('连接')) {
+          domainToast.networkError();
+        } else if (result.error.includes('服务器')) {
+          domainToast.serverError();
+        } else {
+          domainToast.error(result.error);
+        }
       } else {
         console.log(`成功获取域名 ${domain} 的WHOIS信息`);
-        toast({
-          title: "查询成功",
-          description: `已获取 ${domain} 的信息`,
-        });
+        domainToast.success(domain);
       }
     } catch (error) {
       console.error("查询过程中发生错误:", error);
-      toast({
-        title: "查询错误",
-        description: "无法完成域名查询，请稍后再试",
-        variant: "destructive",
-      });
+      domainToast.error("无法完成域名查询，请稍后再试");
       setWhoisData({ 
+        domain,
         error: `查询处理错误: ${error instanceof Error ? error.message : String(error)}`,
         rawData: String(error)
       });
@@ -101,6 +93,13 @@ const Index = () => {
         
         <div className="mt-4">
           {whoisData && <WhoisResults data={whoisData} domain={searchedDomain} />}
+          
+          {/* 当搜索已尝试但数据为null时显示的提示 */}
+          {searchAttempted && !whoisData && !isLoading && (
+            <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-4 mt-4">
+              <p className="text-yellow-800">正在尝试获取域名信息，但尚未成功。请稍后重试。</p>
+            </div>
+          )}
         </div>
         
         <footer className="mt-16 text-center text-gray-400 text-xs">

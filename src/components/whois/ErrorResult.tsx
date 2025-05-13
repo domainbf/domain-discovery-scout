@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock, ExternalLink } from "lucide-react";
+import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock, ExternalLink, WifiOff, ShieldAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ErrorResultProps {
   error: string;
@@ -17,25 +18,70 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
   const isNotFoundError = error.includes('未注册') || error.includes('not found') || error.includes('No match');
   const isTimeoutError = error.includes('超时') || error.includes('timeout');
   const isJsonError = error.includes('JSON') || error.includes('解析');
+  const isNetworkError = error.includes('网络') || error.includes('CORS') || error.includes('connect') || error.includes('Load failed');
+  const isAllMethodsFailedError = error.includes('所有查询方法') || error.includes('无法通过任何渠道');
+  const isApiError = error.includes('API') || error.includes('500');
   
   // 检测特殊TLD错误
   const tld = domain?.split('.').pop()?.toLowerCase() || "";
   
   // 根据TLD类型提供特定指导
-  const isGeTldError = tld === 'ge' || error.includes('ge') || (rawData && rawData.includes('.ge'));
-  const isCnTldError = tld === 'cn' || error.includes('cn') || (rawData && rawData.includes('.cn'));
-  const isJpTldError = tld === 'jp' || error.includes('jp') || (rawData && rawData.includes('.jp'));
+  const isGeTldError = tld === 'ge' || error.includes('ge') || (rawData && rawData?.includes('.ge'));
+  const isCnTldError = tld === 'cn' || error.includes('cn') || (rawData && rawData?.includes('.cn'));
+  const isJpTldError = tld === 'jp' || error.includes('jp') || (rawData && rawData?.includes('.jp'));
   
   // 生成官方查询链接
   const getOfficialLink = () => {
     if (isGeTldError) return 'https://registration.ge/';
     if (isCnTldError) return 'http://whois.cnnic.cn/';
     if (isJpTldError) return 'https://jprs.jp/';
+    if (domain) {
+      // 提供一个备用的通用查询链接
+      return `https://lookup.icann.org/en/lookup?q=${domain}&t=a`;
+    }
     return '';
   };
   
+  // 尝试其他查询网站的链接
+  const getAlternativeLookupLinks = () => {
+    if (!domain) return [];
+    
+    return [
+      {
+        name: 'ICANN Lookup',
+        url: `https://lookup.icann.org/en/lookup?q=${domain}&t=a`
+      },
+      {
+        name: 'WhoisXmlApi',
+        url: `https://www.whoisxmlapi.com/whois-lookup-result.php?domain=${domain}`
+      },
+      {
+        name: 'DomainTools',
+        url: `https://whois.domaintools.com/${domain}`
+      }
+    ];
+  };
+  
   const officialLink = getOfficialLink();
+  const alternativeLookupLinks = getAlternativeLookupLinks();
   const hasTldError = isGeTldError || isCnTldError || isJpTldError;
+  
+  // 根据错误类型选择建议
+  const getSuggestions = () => {
+    if (isAllMethodsFailedError) {
+      return "由于网络原因或查询限制，无法通过多种渠道获取该域名信息，请通过下方链接在其他网站尝试查询。";
+    }
+    if (isNetworkError) {
+      return "当前网络环境可能存在访问限制或CORS策略问题，请尝试使用其他域名查询工具。";
+    }
+    if (isApiError) {
+      return "查询API暂时无法使用，可能是服务器负载过高或维护中，请稍后再试。";
+    }
+    if (isTimeoutError) {
+      return "查询超时，可能是服务器响应较慢或网络连接不稳定，请稍后再试。";
+    }
+    return "可以尝试使用其他在线工具查询该域名信息。";
+  };
   
   return (
     <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
@@ -46,10 +92,24 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
       <p className="text-red-700">{error}</p>
       
       {/* 根据错误类型提供更具体的帮助信息 */}
+      {isNetworkError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <WifiOff className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>网络连接问题，无法访问WHOIS/RDAP服务器。可能是CORS策略限制或网络连接问题。</p>
+        </div>
+      )}
+      
       {isServerError && (
         <div className="mt-3 flex items-start text-sm text-red-600">
           <Server className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
           <p>WHOIS服务器可能暂时不可用或拒绝了连接请求。请稍后再试。</p>
+        </div>
+      )}
+      
+      {isApiError && (
+        <div className="mt-3 flex items-start text-sm text-red-600">
+          <ShieldAlert className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+          <p>API服务器返回了错误响应，可能是查询限制或服务器维护问题。</p>
         </div>
       )}
       
@@ -108,6 +168,29 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
           <p>该域名可能未被注册，您可以考虑注册它。</p>
         </div>
       )}
+      
+      {/* 尝试其他查询方式建议 */}
+      <div className="mt-6 bg-white/70 p-4 rounded-lg border border-gray-100">
+        <h4 className="font-medium text-gray-800 mb-2 flex items-center">
+          <InfoIcon className="h-4 w-4 mr-2" />
+          查询建议
+        </h4>
+        <p className="text-sm text-gray-600 mb-3">{getSuggestions()}</p>
+        
+        <div className="flex flex-wrap gap-2">
+          {alternativeLookupLinks.map((link, index) => (
+            <a 
+              key={index}
+              href={link.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-3 py-1 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 text-sm"
+            >
+              {link.name} <ExternalLink className="h-3 w-3 ml-1" />
+            </a>
+          ))}
+        </div>
+      </div>
       
       {rawData && (
         <div className="mt-6">

@@ -1,4 +1,3 @@
-
 // RDAP Service - Handles RDAP protocol lookups
 import { WhoisResult, Contact } from '../types/WhoisTypes';
 import { rdapBootstrap, rdapEndpoints, isRdapSupported } from '@/utils/whois-servers';
@@ -63,7 +62,7 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
       console.log("RDAP error response:", responseText.substring(0, 200));
       
       return {
-        error: `RDAP请求失败: ${response.status}`,
+        error: `RDAP请求失败: ${response.status} - ${responseText.substring(0, 100)}`,
         rawData: responseText,
         domain
       };
@@ -162,9 +161,22 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
     }
     
     console.error(`RDAP error for ${domain}:`, error);
+    
+    // Provide more detailed network-related error information
+    let errorMessage = "RDAP查询错误";
+    if (error instanceof Error) {
+      errorMessage += `: ${error.message}`;
+      // Network errors like CORS or connection issues
+      if (error.message === "Load failed" || 
+          error.message.includes("NetworkError") ||
+          error.message.includes("Failed to fetch")) {
+        errorMessage = `RDAP网络连接错误: 可能由于CORS策略限制或网络连接问题导致无法连接到RDAP服务器`;
+      }
+    }
+    
     return {
       domain,
-      error: `RDAP查询错误: ${error instanceof Error ? error.message : String(error)}`,
+      error: errorMessage,
       source: 'rdap'
     };
   }
