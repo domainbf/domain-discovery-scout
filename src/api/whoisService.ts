@@ -1,13 +1,13 @@
 
 // WHOIS 查询服务 - 使用优化的查询系统，优先采用RDAP
 
-import { WhoisResult, Contact } from './types/WhoisTypes';
+import { WhoisResult } from './types/WhoisTypes';
 import { queryRdapInfo } from './rdap/rdapService';
 import { queryDomainInfoApi, queryDirectWhois } from './whois/whoisApiService';
 import { convertToLegacyFormat } from './whois/whoisParser';
 
 // Re-export types for use in other files
-export { WhoisResult, Contact } from './types/WhoisTypes';
+export type { WhoisResult, Contact } from './types/WhoisTypes';
 
 /**
  * Query domain information using prioritized lookup sources
@@ -37,7 +37,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         created: "请访问官方网站查询",
         updated: "请访问官方网站查询",
         expires: "请访问官方网站查询",
-        message: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
+        error: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
         rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`
       };
     }

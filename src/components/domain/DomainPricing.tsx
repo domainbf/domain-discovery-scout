@@ -33,10 +33,14 @@ const DomainPricing: React.FC<DomainPricingProps> = ({ domain }) => {
         cleanDomain = cleanDomain.replace(/^https?:\/\//, '');
         cleanDomain = cleanDomain.replace(/^www\./, '');
         
+        // Log domain being queried
+        console.log(`Querying pricing for domain: ${cleanDomain}`);
+        
         // Make the API request to Nazhumi
         const response = await fetch(`https://www.nazhumi.com/api/v1/domain/check?domain=${cleanDomain}`);
         
         if (!response.ok) {
+          console.error(`API pricing request failed with status: ${response.status}`);
           throw new Error(`API 请求失败: ${response.status}`);
         }
         

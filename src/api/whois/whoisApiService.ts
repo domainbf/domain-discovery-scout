@@ -1,6 +1,6 @@
 
 // WHOIS API Service - Handles API calls to the WHOIS service
-import { WhoisResult } from '../types/WhoisTypes';
+import { WhoisResult, Contact } from '../types/WhoisTypes';
 import { whoisServers, specialTlds, isSpecialTld } from '@/utils/whois-servers';
 import { parseBasicWhoisText } from './whoisParser';
 
@@ -16,7 +16,7 @@ const specialTldHandlers: Record<string, (domain: string) => WhoisResult> = {
       created: "请访问官方网站查询",
       updated: "请访问官方网站查询",
       expires: "请访问官方网站查询",
-      message: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
+      error: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
       rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`
     };
   },
@@ -26,7 +26,7 @@ const specialTldHandlers: Record<string, (domain: string) => WhoisResult> = {
       domain: domain,
       registrar: "中国互联网络信息中心CNNIC",
       source: "special-handler-cn",
-      message: `查询中国域名(.cn)可能会受到限制，正在尝试通过标准WHOIS查询`,
+      error: `查询中国域名(.cn)可能会受到限制，正在尝试通过标准WHOIS查询`,
       nameservers: ["请等待查询完成..."]
     };
   },
@@ -35,7 +35,7 @@ const specialTldHandlers: Record<string, (domain: string) => WhoisResult> = {
       domain: domain,
       registrar: "Japan Registry Services",
       source: "special-handler-jp",
-      message: `日本域名(.jp)可能需要通过官方网站查询更多信息: https://jprs.jp/`,
+      error: `日本域名(.jp)可能需要通过官方网站查询更多信息: https://jprs.jp/`,
       nameservers: ["正在尝试通过标准WHOIS查询..."]
     };
   }
@@ -71,6 +71,7 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   
   try {
+    console.log("Starting domain-info API fetch...");
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
@@ -83,9 +84,11 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     });
     
     clearTimeout(timeoutId);
+    console.log("domain-info API fetch completed with status:", response.status);
     
     if (!response.ok) {
       let errorText = await response.text();
+      console.log("domain-info API error response:", errorText.substring(0, 200));
       
       try {
         // Try to parse as JSON if it looks like JSON
@@ -108,9 +111,11 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     const contentType = response.headers.get('content-type');
     const isJson = contentType && contentType.includes('application/json');
     const responseText = await response.text();
+    console.log("domain-info API returned content type:", contentType);
     
     // Check for HTML content first
     if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+      console.log("domain-info API returned HTML instead of JSON");
       return {
         error: "API返回了HTML而非JSON响应",
         rawData: responseText.substring(0, 500) + "... (response trimmed)",
@@ -122,6 +127,7 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     if (isJson || (responseText.trim().startsWith('{') || responseText.trim().startsWith('['))) {
       try {
         const data = JSON.parse(responseText);
+        console.log("domain-info API successfully parsed JSON response");
         
         // If API returned an error
         if (data.error) {
@@ -140,6 +146,7 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
         // Return API result directly
         return data;
       } catch (parseError) {
+        console.error("Failed to parse domain-info API JSON:", parseError);
         return { 
           error: `无法解析API响应JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
           rawData: responseText,
@@ -148,10 +155,12 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
       }
     } else {
       // Handle non-JSON responses - try to parse as WHOIS text
+      console.log("domain-info API returned non-JSON response, attempting to parse as WHOIS text");
       try {
         return parseBasicWhoisText(responseText, domain);
       } catch (parseError) {
         // If parsing fails, return error
+        console.error("Failed to parse domain-info API response as WHOIS text:", parseError);
         return {
           error: "API响应格式无效(非JSON)",
           rawData: responseText.length > 500 ? 
@@ -163,9 +172,11 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
+      console.log("domain-info API query timed out");
       return { error: "API查询超时", rawData: "请求超时", domain };
     }
     
+    console.error("domain-info API error:", error);
     throw error;
   }
 }
@@ -200,6 +211,7 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
   const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased timeout
   
   try {
+    console.log("Starting direct WHOIS fetch...");
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
@@ -211,11 +223,13 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     });
     
     clearTimeout(timeoutId);
+    console.log("Direct WHOIS fetch completed with status:", response.status);
     
     if (!response.ok) {
       // Try to handle non-standard responses
       try {
         const responseText = await response.text();
+        console.log("Direct WHOIS error response:", responseText.substring(0, 200));
         
         // Check content type
         const contentType = response.headers.get('content-type');
@@ -223,7 +237,7 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
         
         // If response looks like HTML rather than JSON, it may be an API redirect or server error
         if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
-          console.warn("Received HTML response instead of JSON, trying to extract error info");
+          console.warn("Received HTML response instead of JSON from WHOIS API");
           return {
             error: `WHOIS服务器 ${whoisServer} 响应格式错误或无法连接`,
             rawData: responseText.substring(0, 500) + "... (response trimmed)",
@@ -242,6 +256,7 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
             };
           } catch (e) {
             // Parse failed, use original response text
+            console.error("Failed to parse error JSON from WHOIS API:", e);
           }
         }
         
@@ -253,6 +268,7 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
           domain
         };
       } catch (parseError) {
+        console.error("Failed to parse WHOIS API error response:", parseError);
         return {
           error: `解析API响应失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
           rawData: `原始HTTP状态: ${response.status}`,
@@ -265,9 +281,11 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     const contentType = response.headers.get('content-type');
     const isJson = contentType && contentType.includes('application/json');
     const responseText = await response.text();
+    console.log("Direct WHOIS API returned content type:", contentType);
     
     // Check for HTML content first - most important check!
     if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+      console.log("Direct WHOIS API returned HTML instead of JSON");
       return {
         error: "API返回了HTML而非JSON响应",
         rawData: responseText.substring(0, 500) + "... (response trimmed)",
@@ -279,6 +297,7 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     if (isJson || (responseText.trim().startsWith('{') || responseText.trim().startsWith('['))) {
       try {
         const data = JSON.parse(responseText);
+        console.log("Direct WHOIS API successfully parsed JSON response");
         
         if (data.error) {
           return {
@@ -308,6 +327,7 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
         const parsedWhois = parseBasicWhoisText(responseText, domain);
         return parsedWhois;
       } catch (parseError) {
+        console.error("Failed to parse WHOIS plain text:", parseError);
         return {
           error: "无法解析服务器响应",
           rawData: responseText.length > 500 ? 
@@ -319,8 +339,10 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
+      console.log("Direct WHOIS API query timed out");
       return { error: "WHOIS API超时", rawData: "请求超时", domain };
     }
+    console.error("Direct WHOIS API error:", error);
     throw error;
   }
 }

@@ -35,6 +35,7 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   
   try {
+    console.log("RDAP fetch started...");
     const response = await fetch(rdapUrl, {
       method: 'GET',
       headers: {
@@ -46,6 +47,7 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
     });
     
     clearTimeout(timeoutId);
+    console.log("RDAP fetch completed with status:", response.status);
     
     if (!response.ok) {
       // Check if this was a 404 - domain might not exist
@@ -57,14 +59,18 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
         };
       }
       
+      const responseText = await response.text();
+      console.log("RDAP error response:", responseText.substring(0, 200));
+      
       return {
         error: `RDAP请求失败: ${response.status}`,
-        rawData: await response.text(),
+        rawData: responseText,
         domain
       };
     }
     
     const data = await response.json();
+    console.log("RDAP data received successfully");
     
     // Parse RDAP response
     const result: WhoisResult = {
@@ -151,6 +157,7 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
     return result;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
+      console.log("RDAP query timed out");
       return { error: "RDAP查询超时", rawData: "请求超时", domain };
     }
     
