@@ -9,6 +9,19 @@ import { rdapBootstrap, rdapEndpoints, isRdapSupported } from '@/utils/whois-ser
  * @returns Promise with WhoisResult
  */
 export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
+  // Updated regex to fix pattern matching errors
+  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  if (!domainRegex.test(domain)) {
+    return { 
+      domain,
+      error: "域名格式无效",
+      rawData: `Invalid domain format: ${domain}`,
+      errorDetails: {
+        formatError: true
+      }
+    };
+  }
+
   const tld = domain.split('.').pop()?.toLowerCase() || "";
   
   // Check if RDAP is supported for this TLD
@@ -16,7 +29,10 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
     console.log(`RDAP not supported for .${tld} domain`);
     return {
       error: `RDAP协议不支持 .${tld} 域名`,
-      domain
+      domain,
+      errorDetails: {
+        notSupported: true
+      }
     };
   }
   
@@ -30,27 +46,16 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
   
   console.log("Requesting RDAP info:", rdapUrl);
   
-  // Set timeout to 15 seconds
+  // Reduced timeout to 10 seconds to improve user experience
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
   
   try {
     console.log("RDAP fetch started...");
     
-    // First try using fetch with no-cors to test connectivity
-    try {
-      const testResponse = await fetch(rdapUrl, {
-        method: 'HEAD',
-        mode: 'no-cors',
-        cache: 'no-cache'
-      });
-      console.log("RDAP server reachable");
-    } catch (testError) {
-      console.warn("RDAP server not reachable in no-cors mode:", testError);
-      // Continue anyway as this was just a test
-    }
+    // Skip the no-cors test as it often misleads
     
-    // Now do the actual request
+    // Now do the actual request with better error handling
     const response = await fetch(rdapUrl, {
       method: 'GET',
       headers: {
@@ -58,7 +63,7 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
         'User-Agent': 'Domain-Info-Tool/1.0'
       },
       signal: controller.signal,
-      cache: 'no-cache'
+      cache: 'no-store' // Disable caching for fresh results
     });
     
     clearTimeout(timeoutId);
@@ -70,7 +75,10 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
         return {
           domain,
           error: "域名未注册或RDAP服务器中无记录",
-          source: 'rdap'
+          source: 'rdap',
+          errorDetails: {
+            notFound: true
+          }
         };
       }
       
@@ -100,7 +108,11 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
       return {
         error: errorMessage,
         rawData: responseText || `状态码: ${response.status}`,
-        domain
+        domain,
+        errorDetails: {
+          apiError: true,
+          statusCode: response.status
+        }
       };
     }
     
@@ -114,7 +126,10 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
       return {
         domain,
         error: `RDAP响应解析错误: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`,
-        rawData: await response.text()
+        rawData: await response.text(),
+        errorDetails: {
+          parseError: true
+        }
       };
     }
     
@@ -206,13 +221,22 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
     
     if (error instanceof DOMException && error.name === 'AbortError') {
       console.log("RDAP query timed out");
-      return { error: "RDAP查询超时", rawData: "请求超时", domain };
+      return { 
+        error: "RDAP查询超时", 
+        rawData: "请求超时", 
+        domain,
+        errorDetails: {
+          timeout: true
+        }
+      };
     }
     
     console.error(`RDAP error for ${domain}:`, error);
     
     // Provide more detailed network-related error information
     let errorMessage = "RDAP查询错误";
+    const errorStr = String(error);
+    
     if (error instanceof Error) {
       errorMessage += `: ${error.message}`;
       // Network errors like CORS or connection issues
@@ -227,13 +251,23 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
           errorMessage += `\n建议: 尝试使用其他查询方式或通过代理服务器查询`;
         }
       }
+      
+      // Check for pattern matching errors
+      if (errorStr.includes('expected pattern')) {
+        errorMessage = `RDAP格式错误: 域名格式不符合RDAP服务器要求`;
+      }
     }
     
     return {
       domain,
       error: errorMessage,
       source: 'rdap',
-      rawData: String(error)
+      rawData: errorStr,
+      errorDetails: {
+        network: errorStr.includes('fetch') || errorStr.includes('network'),
+        cors: errorStr.includes('CORS') || errorStr.includes('origin'),
+        patternError: errorStr.includes('expected pattern')
+      }
     };
   }
 }

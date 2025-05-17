@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock, ExternalLink, WifiOff, ShieldAlert, Radio } from "lucide-react";
+import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock, ExternalLink, WifiOff, ShieldAlert, Radio, FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -15,6 +16,10 @@ interface ErrorResultProps {
     apiError?: boolean;
     serverError?: boolean;
     notSupported?: boolean;
+    formatError?: boolean;
+    parseError?: boolean;
+    patternError?: boolean;
+    notFound?: boolean;
   };
   alternativeLinks?: Array<{name: string, url: string}>;
 }
@@ -29,14 +34,15 @@ const ErrorResult: React.FC<ErrorResultProps> = ({
   // 检测特定类型的错误以提供更好的用户反馈
   const isServerError = errorDetails.serverError || error.includes('服务器') || error.includes('连接失败');
   const isHtmlError = error.includes('HTML') || (rawData && rawData.includes('<!DOCTYPE html>'));
-  const isFormatError = error.includes('格式') || error.includes('解析');
-  const isNotFoundError = error.includes('未注册') || error.includes('not found') || error.includes('No match');
+  const isFormatError = errorDetails.formatError || error.includes('格式') || error.includes('解析');
+  const isNotFoundError = errorDetails.notFound || error.includes('未注册') || error.includes('not found') || error.includes('No match');
   const isTimeoutError = errorDetails.timeout || error.includes('超时') || error.includes('timeout');
-  const isJsonError = error.includes('JSON') || error.includes('解析');
+  const isJsonError = errorDetails.parseError || error.includes('JSON') || error.includes('解析');
   const isNetworkError = errorDetails.network || error.includes('网络') || error.includes('CORS') || error.includes('connect') || error.includes('Load failed');
   const isAllMethodsFailedError = error.includes('所有查询方法') || error.includes('无法通过任何渠道');
   const isApiError = errorDetails.apiError || error.includes('API') || error.includes('500');
   const isCorsError = errorDetails.cors || error.includes('CORS') || error.includes('跨域');
+  const isPatternError = errorDetails.patternError || error.includes('expected pattern') || error.includes('不符合') || (rawData && rawData?.includes('expected pattern'));
   
   // 检测特殊TLD错误
   const tld = domain?.split('.').pop()?.toLowerCase() || "";
@@ -90,6 +96,9 @@ const ErrorResult: React.FC<ErrorResultProps> = ({
   
   // 根据错误类型选择建议
   const getSuggestions = () => {
+    if (isPatternError) {
+      return "域名格式不符合查询服务的要求，请输入有效的标准域名格式，例如：example.com";
+    }
     if (isAllMethodsFailedError) {
       return "由于网络原因或查询限制，无法通过多种渠道获取该域名信息，请通过下方链接在其他网站尝试查询。";
     }
@@ -100,7 +109,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({
       return "当前网络环境可能存在访问限制或连接问题，请检查网络连接后重试或使用其他域名查询工具。";
     }
     if (isApiError) {
-      return "查询API暂时无法��用，可能是服务器负载过高或维护中，请稍后再试。";
+      return "查询API暂时无法使用，可能是服务器负载过高或维护中，请稍后再试。";
     }
     if (isTimeoutError) {
       return "查询超时，可能是服务器响应较慢或网络连接不稳定，请稍后再试。";
@@ -108,9 +117,6 @@ const ErrorResult: React.FC<ErrorResultProps> = ({
     return "可以尝试使用其他在线工具查询该域名信息。";
   };
 
-  // Check if we have a pattern match error (common with the error: "The string did not match the expected pattern.")
-  const isPatternMatchError = rawData?.includes("expected pattern") || error.includes("expected pattern");
-  
   return (
     <div className="rounded-2xl bg-red-50/80 backdrop-blur-sm border border-red-100 shadow-lg p-6">
       <div className="flex items-center text-red-600 mb-4">
@@ -118,6 +124,19 @@ const ErrorResult: React.FC<ErrorResultProps> = ({
         <h3 className="text-xl font-semibold">查询错误</h3>
       </div>
       <p className="text-red-700">{error}</p>
+      
+      {/* Pattern match error - special handling */}
+      {isPatternError && (
+        <Alert variant="destructive" className="mt-3 bg-red-100 border-red-200">
+          <AlertDescription className="flex items-center text-sm">
+            <FileWarning className="h-4 w-4 mr-2 flex-shrink-0" />
+            <div>
+              <p><strong>域名格式验证错误</strong>: 这通常是由于查询参数格式不符合API要求导致的</p>
+              <p className="mt-1">请尝试输入标准格式的域名，如"example.com"，而不要输入带有协议的URL如"http://"或其他非标准格式</p>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
       
       {/* Network connectivity check alert */}
       {isNetworkError && (
@@ -136,17 +155,6 @@ const ErrorResult: React.FC<ErrorResultProps> = ({
           <div>
             <p>浏览器的安全策略(CORS)阻止了直接查询WHOIS服务器。这是一种保护机制，不是应用程序错误。</p>
             <p className="mt-1">解决方法：使用支持CORS的API或代理服务，或尝试下方的外部查询工具。</p>
-          </div>
-        </div>
-      )}
-      
-      {/* Pattern match error */}
-      {isPatternMatchError && (
-        <div className="mt-3 flex items-start text-sm text-red-600">
-          <FileText className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-          <div>
-            <p>域名格式验证错误："The string did not match the expected pattern"。这通常是由于查询参数格式不正确导致的。</p>
-            <p className="mt-1">请尝试使用标准格式的域名，如"example.com"而非"http://example.com"或其他非标准格式。</p>
           </div>
         </div>
       )}
@@ -207,7 +215,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({
         </div>
       )}
       
-      {isFormatError && (
+      {isFormatError && !isPatternError && (
         <div className="mt-3 flex items-start text-sm text-red-600">
           <FileText className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
           <p>无法解析服务器返回的数据格式。请尝试使用其他查询方式。</p>

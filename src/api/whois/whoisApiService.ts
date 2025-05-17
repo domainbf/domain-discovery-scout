@@ -11,18 +11,22 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
   console.log(`Requesting domain-info API: /api/domain-info?domain=${domain}`);
   
   // Validate the domain format before sending the request
-  const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
+  // Updated regex to fix pattern matching issues
+  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   if (!domainRegex.test(domain)) {
     return { 
       domain,
       error: "域名格式无效",
-      rawData: "Invalid domain format"
+      rawData: `Invalid domain format: ${domain}`,
+      errorDetails: {
+        formatError: true
+      }
     };
   }
   
   try {
     console.log("Starting domain-info API fetch...");
-    const response = await fetch(`/api/domain-info?domain=${domain}`, {
+    const response = await fetch(`/api/domain-info?domain=${encodeURIComponent(domain)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -45,18 +49,52 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
       return { 
         domain,
         error: `API请求失败: ${response.status}${errorText ? ` - ${errorText}` : ''}`,
-        rawData: errorText || `状态码: ${response.status}`
+        rawData: errorText || `状态码: ${response.status}`,
+        errorDetails: {
+          apiError: true,
+          statusCode: response.status
+        }
       };
     }
     
-    const data = await response.json();
-    return data;
+    try {
+      const data = await response.json();
+      return data;
+    } catch (parseError) {
+      console.error("Error parsing domain-info API response:", parseError);
+      return {
+        domain,
+        error: `API响应解析错误: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+        rawData: `解析错误: ${String(parseError)}`,
+        errorDetails: {
+          parseError: true
+        }
+      };
+    }
   } catch (error) {
     console.error("Domain info API error:", error);
+    // Check specifically for pattern matching errors
+    const errorStr = String(error);
+    if (errorStr.includes('expected pattern')) {
+      return { 
+        domain,
+        error: `域名格式验证失败: "${domain}" 不符合API要求的格式`,
+        rawData: errorStr,
+        errorDetails: {
+          formatError: true,
+          patternError: true
+        }
+      };
+    }
+    
     return { 
       domain,
       error: `API请求错误: ${error instanceof Error ? error.message : String(error)}`,
-      rawData: String(error)
+      rawData: String(error),
+      errorDetails: {
+        network: errorStr.includes('fetch') || errorStr.includes('network'),
+        cors: errorStr.includes('CORS') || errorStr.includes('origin')
+      }
     };
   }
 }
@@ -65,13 +103,16 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
  * Query domain information using direct WHOIS lookup
  */
 export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
-  // Validate domain format
-  const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
+  // Updated regex to fix pattern matching issues
+  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   if (!domainRegex.test(domain)) {
     return { 
       domain,
       error: "域名格式无效",
-      rawData: "Invalid domain format" 
+      rawData: `Invalid domain format: ${domain}`,
+      errorDetails: {
+        formatError: true
+      }
     };
   }
   
@@ -82,7 +123,10 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     return {
       domain,
       error: `不支持的顶级域名: .${tld}`,
-      rawData: `未找到 .${tld} 的WHOIS服务器配置`
+      rawData: `未找到 .${tld} 的WHOIS服务器配置`,
+      errorDetails: {
+        notSupported: true
+      }
     };
   }
   
@@ -90,12 +134,13 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
   
   try {
     console.log("Starting direct WHOIS fetch...");
-    const response = await fetch(`/api/whois?domain=${domain}`, {
+    const response = await fetch(`/api/whois?domain=${encodeURIComponent(domain)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'Domain-Info-Tool/1.0'
-      }
+      },
+      cache: 'no-store' // Disable caching to avoid stale responses
     });
     
     console.log("Direct WHOIS fetch completed with status:", response.status);
@@ -112,18 +157,53 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
       return { 
         domain,
         error: `WHOIS API请求失败: ${response.status}${errorText ? ` - ${errorText}` : ''}`,
-        rawData: errorText || `状态码: ${response.status}` 
+        rawData: errorText || `状态码: ${response.status}`,
+        errorDetails: {
+          apiError: true,
+          statusCode: response.status
+        }
       };
     }
     
-    const data = await response.json();
-    return data;
+    try {
+      const data = await response.json();
+      return data;
+    } catch (parseError) {
+      console.error("Error parsing WHOIS response:", parseError);
+      
+      // Check for pattern matching errors
+      const errorStr = String(parseError);
+      if (errorStr.includes('expected pattern')) {
+        return {
+          domain,
+          error: `WHOIS响应解析错误: 域名格式不符合WHOIS服务器要求`,
+          rawData: errorStr,
+          errorDetails: {
+            formatError: true,
+            patternError: true
+          }
+        };
+      }
+      
+      return {
+        domain,
+        error: `WHOIS响应解析错误: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+        rawData: errorStr,
+        errorDetails: {
+          parseError: true
+        }
+      };
+    }
   } catch (error) {
     console.error("Direct WHOIS error:", error);
     return { 
       domain,
       error: `WHOIS请求错误: ${error instanceof Error ? error.message : String(error)}`,
-      rawData: String(error)
+      rawData: String(error),
+      errorDetails: {
+        network: String(error).includes('fetch') || String(error).includes('network'),
+        cors: String(error).includes('CORS') || String(error).includes('cross-origin'),
+      }
     };
   }
 }

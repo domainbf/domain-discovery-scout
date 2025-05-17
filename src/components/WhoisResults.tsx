@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { WhoisResult } from '@/api/whoisService';
 import ErrorResult from './whois/ErrorResult';
@@ -30,7 +31,7 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
   return (
     <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 shadow-lg p-6">
       <DomainHeader domain={domain} />
-      <StatusBadges status={data.status} dnssec={data.dnssec} />
+      <StatusBadges status={data.status || []} dnssec={data.dnssec} />
       <DateInfo 
         created={data.created} 
         updated={data.updated} 
@@ -48,6 +49,6 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
       <WhoisDataFooter source={data.source} />
     </div>
   );
-};
+}
 
 export default WhoisResults;
