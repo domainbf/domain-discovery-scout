@@ -53,6 +53,10 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
     return cachedResult.data;
   }
   
+  // Check if TLD is supported before making the request
+  const tld = normalizedDomain.split('.').pop()?.toLowerCase();
+  const isTldSupported = tld ? (tld in whoisServers) : false;
+  
   // Perform the query
   try {
     console.log(`Fetching fresh result for ${normalizedDomain}`);
@@ -83,7 +87,9 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
     // 确保总是返回格式一致的结构
     const formattedResult: WhoisResult = {
       domain: normalizedDomain,
-      ...result
+      ...result,
+      // 添加TLD支持信息，便于前端了解查询过程
+      tldSupported: isTldSupported
     };
     
     // Cache the result even if it has errors (to prevent repeated failing requests)
@@ -95,6 +101,24 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
     return formattedResult;
   } catch (error) {
     console.error(`Error in domain lookup: ${error}`);
+    
+    // 如果是不支持的TLD，返回更具体的错误消息
+    if (!isTldSupported) {
+      const unsupportedResult: WhoisResult = {
+        domain: normalizedDomain,
+        error: `不支持查询 .${tld} 域名, 请使用官方WHOIS服务`,
+        source: 'unsupported-tld',
+        rawData: `当前服务不支持查询 .${tld} 域名。请使用官方WHOIS查询服务或域名注册商提供的查询工具。`,
+        tldSupported: false
+      };
+      
+      cache.set(normalizedDomain, {
+        data: unsupportedResult,
+        timestamp: Date.now()
+      });
+      
+      return unsupportedResult;
+    }
     
     // Check if we have fallback data for common domains
     if (normalizedDomain in fallbackData) {
@@ -153,7 +177,18 @@ export function isValidDomain(domain: string): boolean {
   const tld = domain.split('.').pop()?.toLowerCase();
   if (!tld) return false;
   
-  // Check if we support this TLD in our whois servers list
+  // We don't check if TLD is supported anymore - we'll use alternative lookup methods
+  // Just verify the domain format is valid
+  return true;
+}
+
+/**
+ * Check if the domain's TLD is directly supported by our WHOIS servers
+ * @param domain Domain to check
+ * @returns boolean indicating if the TLD is supported
+ */
+export function isSupportedTld(domain: string): boolean {
+  const tld = domain.split('.').pop()?.toLowerCase() || "";
   return tld in whoisServers;
 }
 

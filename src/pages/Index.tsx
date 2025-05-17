@@ -5,7 +5,7 @@ import WhoisResults from '@/components/WhoisResults';
 import { WhoisResult } from '@/api/whoisService';
 import { toast, domainToast } from "@/components/ui/use-toast";
 import { MegaphoneIcon, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
-import { lookupDomain, isValidDomain, isWellKnownDomain } from '@/utils/domainLookup';
+import { lookupDomain, isValidDomain, isWellKnownDomain, isSupportedTld } from '@/utils/domainLookup';
 import DomainPricing from '@/components/domain/DomainPricing';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -47,6 +47,19 @@ const Index = () => {
       domainToast.formatError();
       return;
     }
+    
+    // Check if TLD is supported
+    const tldSupported = isSupportedTld(domain);
+    
+    if (!tldSupported) {
+      // If TLD is not directly supported, show a warning toast but allow the search to continue
+      // as we now attempt to use alternative methods
+      toast({
+        title: "注意：非直接支持的域名后缀",
+        description: `该域名后缀不在我们直接支持的列表中，将尝试使用其他方式查询`,
+        variant: "warning",
+      });
+    }
 
     // Check network status first
     if (networkStatus === 'offline') {
@@ -76,7 +89,13 @@ const Index = () => {
         console.error('查询返回错误:', result.error);
         
         // Show appropriate toast based on error type
-        if (result.error.includes('网络') || result.error.includes('连接') || result.error.includes('CORS')) {
+        if (result.source === 'unsupported-tld') {
+          toast({
+            title: "不支持的域名后缀",
+            description: `我们不直接支持查询该域名后缀，请使用官方WHOIS服务`,
+            variant: "warning",
+          });
+        } else if (result.error.includes('网络') || result.error.includes('连接') || result.error.includes('CORS')) {
           domainToast.networkError();
         } else if (result.error.includes('服务器')) {
           domainToast.serverError();

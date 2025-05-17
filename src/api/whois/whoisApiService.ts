@@ -10,6 +10,16 @@ import { whoisServers } from '@/utils/whois-servers';
 export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
   console.log(`Requesting domain-info API: /api/domain-info?domain=${domain}`);
   
+  // Validate the domain format before sending the request
+  const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
+  if (!domainRegex.test(domain)) {
+    return { 
+      domain,
+      error: "域名格式无效",
+      rawData: "Invalid domain format"
+    };
+  }
+  
   try {
     console.log("Starting domain-info API fetch...");
     const response = await fetch(`/api/domain-info?domain=${domain}`, {
@@ -55,6 +65,16 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
  * Query domain information using direct WHOIS lookup
  */
 export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
+  // Validate domain format
+  const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
+  if (!domainRegex.test(domain)) {
+    return { 
+      domain,
+      error: "域名格式无效",
+      rawData: "Invalid domain format" 
+    };
+  }
+  
   const tld = domain.split('.').pop()?.toLowerCase() || "";
   const server = whoisServers[tld];
   
