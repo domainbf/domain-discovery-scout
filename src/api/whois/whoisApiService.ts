@@ -10,8 +10,8 @@ import { whoisServers } from '@/utils/whois-servers';
 export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
   console.log(`Requesting domain-info API: /api/domain-info?domain=${domain}`);
   
-  // 更宽松的域名正则表达式
-  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  // 更宽松的域名正则表达式，支持更多格式包括 com.net 这样的格式
+  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   if (!domainRegex.test(domain)) {
     return { 
       domain,
@@ -58,34 +58,40 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
       };
     }
     
-    try {
-      const contentType = response.headers.get('content-type');
-      // 检查内容类型是否为HTML
-      if (contentType && contentType.includes('text/html')) {
-        const htmlText = await response.text();
-        return { 
-          domain,
-          error: `API返回了HTML而非JSON数据`,
-          rawData: htmlText.substring(0, 500) + "... (response truncated)",
-          errorDetails: {
-            formatError: true,
-            parseError: true
-          }
-        };
-      }
+    // 检查内容类型和响应内容，确保不是HTML
+    const contentType = response.headers.get('content-type');
+    const responseText = await response.text();
+    
+    // Check for HTML content regardless of content-type header
+    if (responseText.trim().startsWith('<!DOCTYPE html>') || 
+        responseText.trim().startsWith('<html') || 
+        (contentType && contentType.includes('text/html'))) {
+      console.log("API returned HTML instead of JSON");
+      return { 
+        domain,
+        error: `API返回了HTML而非JSON数据，可能是由于服务器配置问题或代理错误`,
+        rawData: responseText.substring(0, 500) + "... (response truncated)",
+        errorDetails: {
+          formatError: true,
+          parseError: true,
+          serverError: true
+        }
+      };
+    }
       
-      const data = await response.json();
+    try {
+      // Try parsing JSON from response text
+      const data = JSON.parse(responseText);
       return data;
     } catch (parseError) {
       console.error("Error parsing domain-info API response:", parseError);
-      const errorText = await response.text();
       return {
         domain,
         error: `API响应解析错误: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-        rawData: errorText.length > 500 ? errorText.substring(0, 500) + "... (response truncated)" : errorText,
+        rawData: responseText.length > 500 ? responseText.substring(0, 500) + "... (response truncated)" : responseText,
         errorDetails: {
           parseError: true,
-          formatError: errorText.includes('<!DOCTYPE html>') || errorText.includes('<html')
+          formatError: responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')
         }
       };
     }
@@ -121,8 +127,8 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
  * Query domain information using direct WHOIS lookup
  */
 export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
-  // 使用更宽松的域名验证正则表达式
-  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  // 使用更宽松的域名验证正则表达式，支持更多域名格式
+  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   if (!domainRegex.test(domain)) {
     return { 
       domain,
@@ -184,24 +190,30 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
       };
     }
     
+    // 检查内容类型和响应内容，确保不是HTML
+    const contentType = response.headers.get('content-type');
+    const responseText = await response.text();
+    
+    // Check for HTML content regardless of content-type header
+    if (responseText.trim().startsWith('<!DOCTYPE html>') || 
+        responseText.trim().startsWith('<html') || 
+        (contentType && contentType.includes('text/html'))) {
+      console.log("WHOIS API returned HTML instead of JSON");
+      return { 
+        domain,
+        error: `WHOIS API返回了HTML而非JSON数据，请检查服务器配置或代理设置`,
+        rawData: responseText.substring(0, 500) + "... (response truncated)",
+        errorDetails: {
+          formatError: true,
+          parseError: true,
+          serverError: true
+        }
+      };
+    }
+    
     try {
-      const contentType = response.headers.get('content-type');
-      // 检查内容类型是否为HTML
-      if (contentType && contentType.includes('text/html')) {
-        const htmlText = await response.text();
-        console.log("WHOIS API returned HTML instead of JSON");
-        return { 
-          domain,
-          error: `WHOIS API返回了HTML而非JSON数据`,
-          rawData: htmlText.substring(0, 500) + "... (response truncated)",
-          errorDetails: {
-            formatError: true,
-            parseError: true
-          }
-        };
-      }
-      
-      const data = await response.json();
+      // Try parsing JSON from response text
+      const data = JSON.parse(responseText);
       return data;
     } catch (parseError) {
       console.error("Error parsing WHOIS response:", parseError);
@@ -209,11 +221,10 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
       // Check for pattern matching errors
       const errorStr = String(parseError);
       if (errorStr.includes('expected pattern')) {
-        const errorContent = await response.text();
         return {
           domain,
           error: `WHOIS响应解析错误: 域名格式不符合WHOIS服务器要求`,
-          rawData: errorStr + "\n\n响应内容: " + errorContent.substring(0, 500),
+          rawData: errorStr + "\n\n响应内容: " + responseText.substring(0, 500),
           errorDetails: {
             formatError: true,
             patternError: true
@@ -224,7 +235,7 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
       return {
         domain,
         error: `WHOIS响应解析错误: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-        rawData: String(parseError),
+        rawData: responseText,
         errorDetails: {
           parseError: true
         }

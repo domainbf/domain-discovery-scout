@@ -15,8 +15,8 @@ export type { WhoisResult, Contact } from './types/WhoisTypes';
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
-    // 改进域名格式验证，使用更宽松的正则表达式
-    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+    // 更宽松的域名格式验证，支持更多有效域名格式
+    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
     if (!domainRegex.test(domain)) {
       return { 
         error: "域名格式无效", 
@@ -77,6 +77,11 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         }
         console.warn(`Direct WHOIS lookup failed: ${directResult.error}`);
         
+        // 检查是否返回了HTML而不是JSON，这通常是配置问题
+        if (directResult.error.includes('HTML')) {
+          console.warn("WHOIS API returned HTML instead of JSON. This is likely a server configuration issue.");
+        }
+        
         // Enhance the error data with details
         directResult.errorDetails = {
           ...(directResult.errorDetails || {}),
@@ -84,8 +89,8 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
           cors: directResult.error.includes('CORS') || directResult.error.includes('跨域'),
           apiError: directResult.error.includes('API') || directResult.error.includes('500'),
           timeout: directResult.error.includes('超时') || directResult.error.includes('timeout'),
-          formatError: directResult.error.includes('格式') || directResult.error.includes('pattern'),
-          parseError: directResult.error.includes('解析') || directResult.error.includes('parse')
+          formatError: directResult.error.includes('格式') || directResult.error.includes('pattern') || directResult.error.includes('HTML'),
+          parseError: directResult.error.includes('解析') || directResult.error.includes('parse') || directResult.error.includes('HTML')
         };
       } catch (error) {
         console.warn(`Direct WHOIS error: ${error instanceof Error ? error.message : String(error)}`);
@@ -105,6 +110,11 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       }
       console.warn(`RDAP lookup failed: ${rdapResult.error}`);
       rdapError = rdapResult.error;
+      
+      // 检查是否返回了HTML而不是JSON
+      if (rdapResult.error.includes('HTML')) {
+        console.warn("RDAP API returned HTML instead of JSON. This could be due to CORS or server configuration.");
+      }
     } catch (error) {
       console.warn(`RDAP error: ${error instanceof Error ? error.message : String(error)}`);
       rdapError = error instanceof Error ? error.message : String(error);
@@ -114,7 +124,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     let apiError = null;
     try {
       console.log("Trying domain-info API as last resort...");
-      const response = await fetch(`/api/domain-info?domain=${encodeURIComponent(domain)}`, {
+      const response = await fetch(`/api/domain-info?domain=${encodeURIComponent(domain)}&format=json`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -129,19 +139,26 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         throw new Error(apiError);
       }
 
+      // 检查是否返回了HTML而不是JSON
       const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('text/html')) {
+      const responseText = await response.text();
+      
+      if (responseText.includes('<!DOCTYPE html>') || 
+          responseText.includes('<html') || 
+          (contentType && contentType.includes('text/html'))) {
         console.log("API returned HTML instead of JSON");
         apiError = "API返回了HTML而非JSON数据";
         throw new Error(apiError);
       }
       
-      const result = await response.json();
-      if (!result.error) {
-        return convertToLegacyFormat(result);
+      // Parse JSON from text
+      const data = JSON.parse(responseText);
+      
+      if (!data.error) {
+        return convertToLegacyFormat(data);
       }
-      console.warn(`domain-info API query failed: ${result.error}`);
-      apiError = result.error;
+      console.warn(`domain-info API query failed: ${data.error}`);
+      apiError = data.error;
     } catch (error) {
       console.warn(`domain-info API error: ${error instanceof Error ? error.message : String(error)}`);
       apiError = error instanceof Error ? error.message : String(error);
@@ -161,8 +178,8 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         cors: rdapError?.includes('CORS') || String(rdapError).includes('跨域'),
         apiError: true,
         serverError: true,
-        formatError: apiError?.includes('pattern') || String(apiError).includes('格式'),
-        parseError: apiError?.includes('parse') || String(apiError).includes('解析')
+        formatError: apiError?.includes('pattern') || String(apiError).includes('格式') || apiError?.includes('HTML'),
+        parseError: apiError?.includes('parse') || String(apiError).includes('解析') || apiError?.includes('HTML')
       },
       alternativeLinks: [
         {

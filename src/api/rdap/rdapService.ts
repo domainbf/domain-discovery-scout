@@ -9,7 +9,7 @@ import { rdapBootstrap, rdapEndpoints, isRdapSupported } from '@/utils/whois-ser
  * @returns Promise with WhoisResult
  */
 export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
-  // 更宽松的域名正则表达式，支持更多有效域名格式
+  // 更宽松的域名正则表达式，支持更多有效域名格式，包括 com.net 这样的格式
   const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   if (!domainRegex.test(domain)) {
     return { 
@@ -21,6 +21,13 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
         patternError: true
       }
     };
+  }
+
+  // 对于例如 com.net 这样的组合域名，可能需要特殊处理
+  // 检查是否包含多个点，如果有，判断是否可能是一个有效的 TLD 组合
+  const parts = domain.split('.');
+  if (parts.length > 2) {
+    console.log(`Complex domain detected: ${domain} with multiple parts: ${parts.join(', ')}`);
   }
 
   const tld = domain.split('.').pop()?.toLowerCase() || "";
@@ -47,15 +54,24 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
   
   console.log("Requesting RDAP info:", rdapUrl);
   
-  // 降低超时时间到8秒，提高用户体验
+  // 降低超时时间到6秒，提高用户体验
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
   
   try {
     console.log("RDAP fetch started...");
     
-    // 尝试一个不带凭据的请求，可能有助于减少CORS问题
-    const response = await fetch(rdapUrl, {
+    // 尝试通过后端代理来解决CORS问题
+    const useProxy = true; // 设置为true使用代理，解决CORS问题
+    
+    // 如果使用代理，则请求我们自己的API端点，而不是直接请求RDAP服务器
+    const requestUrl = useProxy 
+      ? `/api/domain-info?domain=${encodeURIComponent(domain)}&source=rdap` 
+      : rdapUrl;
+    
+    console.log(`Using ${useProxy ? 'proxy' : 'direct'} RDAP request to: ${requestUrl}`);
+    
+    const response = await fetch(requestUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -91,6 +107,20 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
         responseText = await response.text();
         console.log("RDAP error response:", responseText.substring(0, 200));
         
+        // Check if response is HTML 
+        if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+          return {
+            domain,
+            error: "RDAP查询返回了HTML而非预期的JSON数据",
+            rawData: responseText.substring(0, 500) + "... (response truncated)",
+            errorDetails: {
+              formatError: true,
+              parseError: true,
+              serverError: true
+            }
+          };
+        }
+        
         // Try to parse as JSON if it looks like JSON
         if (responseText.trim().startsWith('{')) {
           try {
@@ -117,17 +147,37 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
       };
     }
     
+    // Check for HTML content first
+    const contentType = response.headers.get('content-type');
+    const responseText = await response.text();
+    
+    if (responseText.trim().startsWith('<!DOCTYPE html>') || 
+        responseText.trim().startsWith('<html') || 
+        (contentType && contentType.includes('text/html'))) {
+      console.log("RDAP API returned HTML instead of JSON");
+      return { 
+        domain,
+        error: `RDAP API返回了HTML而非JSON数据，这可能是由于服务器配置问题或CORS限制`,
+        rawData: responseText.substring(0, 500) + "... (response truncated)",
+        errorDetails: {
+          formatError: true,
+          parseError: true,
+          serverError: true
+        }
+      };
+    }
+    
     // Try to parse the JSON response
     let data;
     try {
-      data = await response.json();
+      data = JSON.parse(responseText);
       console.log("RDAP data received successfully");
     } catch (jsonError) {
       console.error("Failed to parse RDAP JSON:", jsonError);
       return {
         domain,
         error: `RDAP响应解析错误: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`,
-        rawData: await response.text(),
+        rawData: responseText,
         errorDetails: {
           parseError: true
         }
