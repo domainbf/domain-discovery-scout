@@ -21,7 +21,10 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       return { 
         error: "域名格式无效", 
         domain,
-        status: ["invalid"]
+        status: ["invalid"],
+        errorDetails: {
+          notSupported: true
+        }
       };
     }
 
@@ -48,7 +51,14 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
           updated: "请访问官方网站查询",
           expires: "请访问官方网站查询",
           error: `格鲁吉亚(.ge)域名需通过官方网站查询: https://registration.ge/`,
-          rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`
+          rawData: `格鲁吉亚域名管理机构不提供标准WHOIS查询接口，请访问 https://registration.ge/ 查询 ${domain} 的信息。`,
+          errorDetails: {
+            notSupported: true
+          },
+          alternativeLinks: [{
+            name: '格鲁吉亚域名注册局',
+            url: 'https://registration.ge/'
+          }]
         };
       }
       
@@ -65,6 +75,15 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
           return directResult;
         }
         console.warn(`Direct WHOIS lookup failed: ${directResult.error}`);
+        
+        // Enhance the error data with details
+        directResult.errorDetails = {
+          ...(directResult.errorDetails || {}),
+          network: directResult.error.includes('网络') || directResult.error.includes('connect'),
+          cors: directResult.error.includes('CORS') || directResult.error.includes('跨域'),
+          apiError: directResult.error.includes('API') || directResult.error.includes('500'),
+          timeout: directResult.error.includes('超时') || directResult.error.includes('timeout')
+        };
       } catch (error) {
         console.warn(`Direct WHOIS error: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -111,7 +130,23 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         : `不支持的顶级域名: .${tld}，且尝试的备选查询方法均失败`,
       source: "all-methods-failed",
       status: ["error"],
-      rawData: `所有查询方法均失败:\n- ${isSupportedTld ? "直接WHOIS: 查询失败，可能是注册局限制\n- " : ""}RDAP: ${rdapError}\n- API: ${apiError}\n\n可能原因:\n- 网络连接问题\n- WHOIS服务器不可用\n- 域名注册局限制查询`
+      rawData: `所有查询方法均失败:\n- ${isSupportedTld ? "直接WHOIS: 查询失败，可能是注册局限制\n- " : ""}RDAP: ${rdapError}\n- API: ${apiError}\n\n可能原因:\n- 网络连接问题\n- WHOIS服务器不可用\n- 域名注册局限制查询`,
+      errorDetails: {
+        network: true,
+        cors: rdapError?.includes('CORS') || String(rdapError).includes('跨域'),
+        apiError: true,
+        serverError: true
+      },
+      alternativeLinks: [
+        {
+          name: 'ICANN Lookup',
+          url: `https://lookup.icann.org/en/lookup?q=${domain}&t=a`
+        },
+        {
+          name: 'WhoisXmlApi',
+          url: `https://www.whoisxmlapi.com/whois-lookup-result.php?domain=${domain}`
+        }
+      ]
     };
   } catch (error) {
     console.error("Domain lookup error:", error);
@@ -119,7 +154,10 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       domain,
       error: `查询错误: ${error instanceof Error ? error.message : String(error)}`,
       status: ["error"],
-      rawData: String(error)
+      rawData: String(error),
+      errorDetails: {
+        network: true
+      }
     };
   }
 }

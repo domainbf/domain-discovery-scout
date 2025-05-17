@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Separator } from "@/components/ui/separator";
 import { AlertTriangle, FileText, Server, Globe, InfoIcon, Clock, ExternalLink, WifiOff, ShieldAlert, Radio } from "lucide-react";
@@ -9,20 +8,35 @@ interface ErrorResultProps {
   error: string;
   rawData?: string;
   domain?: string;
+  errorDetails?: {
+    cors?: boolean;
+    network?: boolean;
+    timeout?: boolean;
+    apiError?: boolean;
+    serverError?: boolean;
+    notSupported?: boolean;
+  };
+  alternativeLinks?: Array<{name: string, url: string}>;
 }
 
-const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => {
+const ErrorResult: React.FC<ErrorResultProps> = ({ 
+  error, 
+  rawData, 
+  domain,
+  errorDetails = {},
+  alternativeLinks = []
+}) => {
   // 检测特定类型的错误以提供更好的用户反馈
-  const isServerError = error.includes('服务器') || error.includes('连接失败');
+  const isServerError = errorDetails.serverError || error.includes('服务器') || error.includes('连接失败');
   const isHtmlError = error.includes('HTML') || (rawData && rawData.includes('<!DOCTYPE html>'));
   const isFormatError = error.includes('格式') || error.includes('解析');
   const isNotFoundError = error.includes('未注册') || error.includes('not found') || error.includes('No match');
-  const isTimeoutError = error.includes('超时') || error.includes('timeout');
+  const isTimeoutError = errorDetails.timeout || error.includes('超时') || error.includes('timeout');
   const isJsonError = error.includes('JSON') || error.includes('解析');
-  const isNetworkError = error.includes('网络') || error.includes('CORS') || error.includes('connect') || error.includes('Load failed');
+  const isNetworkError = errorDetails.network || error.includes('网络') || error.includes('CORS') || error.includes('connect') || error.includes('Load failed');
   const isAllMethodsFailedError = error.includes('所有查询方法') || error.includes('无法通过任何渠道');
-  const isApiError = error.includes('API') || error.includes('500');
-  const isCorsError = error.includes('CORS') || error.includes('跨域');
+  const isApiError = errorDetails.apiError || error.includes('API') || error.includes('500');
+  const isCorsError = errorDetails.cors || error.includes('CORS') || error.includes('跨域');
   
   // 检测特殊TLD错误
   const tld = domain?.split('.').pop()?.toLowerCase() || "";
@@ -69,7 +83,9 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
   };
   
   const officialLink = getOfficialLink();
-  const alternativeLookupLinks = getAlternativeLookupLinks();
+  const links = alternativeLinks.length > 0 ? 
+    alternativeLinks : 
+    getAlternativeLookupLinks();
   const hasTldError = isGeTldError || isCnTldError || isJpTldError;
   
   // 根据错误类型选择建议
@@ -84,7 +100,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
       return "当前网络环境可能存在访问限制或连接问题，请检查网络连接后重试或使用其他域名查询工具。";
     }
     if (isApiError) {
-      return "查询API暂时无法使用，可能是服务器负载过高或维护中，请稍后再试。";
+      return "查询API暂时无法��用，可能是服务器负载过高或维护中，请稍后再试。";
     }
     if (isTimeoutError) {
       return "查询超时，可能是服务器响应较慢或网络连接不稳定，请稍后再试。";
@@ -231,7 +247,7 @@ const ErrorResult: React.FC<ErrorResultProps> = ({ error, rawData, domain }) => 
         <p className="text-sm text-gray-600 mb-3">{getSuggestions()}</p>
         
         <div className="flex flex-wrap gap-2">
-          {alternativeLookupLinks.map((link, index) => (
+          {links.map((link, index) => (
             <a 
               key={index}
               href={link.url} 

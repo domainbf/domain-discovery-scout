@@ -42,4 +42,13 @@ export interface WhoisResult {
   registrantEmail?: string; // For backward compatibility
   registrantPhone?: string; // For backward compatibility
   tldSupported?: boolean; // Added for TLD support indication
+  errorDetails?: {
+    cors?: boolean;
+    network?: boolean;
+    timeout?: boolean;
+    apiError?: boolean;
+    serverError?: boolean;
+    notSupported?: boolean;
+  };  // Added for more detailed error information
+  alternativeLinks?: Array<{name: string, url: string}>; // For providing alternative resources
 }

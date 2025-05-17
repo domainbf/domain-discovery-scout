@@ -1,4 +1,3 @@
-
 // Domain lookup utilities to optimize search and caching
 import { WhoisResult, queryWhois } from '@/api/whoisService';
 import { whoisServers } from '@/utils/whois-servers';
@@ -73,8 +72,19 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
         error: `查询出错，使用缓存数据: ${result.error}`,
         source: 'fallback-data',
         rawData: `原始错误: ${result.error}\n\n使用预设的域名信息作为备用数据。这些信息可能不是最新的，仅供参考。`,
-        tldSupported: isTldSupported
+        tldSupported: isTldSupported,
+        errorDetails: {
+          ...(result.errorDetails || {}),
+          network: result.error.includes('网络') || result.error.includes('connect'),
+          cors: result.error.includes('CORS') || result.error.includes('跨域'),
+          apiError: result.error.includes('API') || result.error.includes('500')
+        }
       };
+      
+      // Add alternative links for lookup
+      if (!fallbackResult.alternativeLinks) {
+        fallbackResult.alternativeLinks = generateAlternativeLinks(normalizedDomain);
+      }
       
       // Store in cache
       cache.set(normalizedDomain, {
@@ -110,7 +120,11 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
         error: `不支持查询 .${tld} 域名, 请使用官方WHOIS服务`,
         source: 'unsupported-tld',
         rawData: `当前服务不支持查询 .${tld} 域名。请使用官方WHOIS查询服务或域名注册商提供的查询工具。`,
-        tldSupported: false
+        tldSupported: false,
+        errorDetails: {
+          notSupported: true
+        },
+        alternativeLinks: generateAlternativeLinks(normalizedDomain)
       };
       
       cache.set(normalizedDomain, {
@@ -131,7 +145,12 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
         error: `查询失败，使用缓存数据: ${error instanceof Error ? error.message : String(error)}`,
         source: 'fallback-data',
         rawData: `原始错误: ${error}\n\n使用预设的域名信息作为备用数据。这些信息可能不是最新的，仅供参考。`,
-        tldSupported: isTldSupported
+        tldSupported: isTldSupported,
+        errorDetails: {
+          network: true, // Assume network error since all methods failed
+          cors: String(error).includes('CORS')
+        },
+        alternativeLinks: generateAlternativeLinks(normalizedDomain)
       };
       
       // Store in cache
@@ -144,13 +163,45 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
     }
     
     // 返回一个标准的错误结构
+    const errorMsg = `查询失败: ${error instanceof Error ? error.message : String(error)}`;
+    
     return {
       domain: normalizedDomain,
-      error: `查询失败: ${error instanceof Error ? error.message : String(error)}`,
+      error: errorMsg,
       rawData: String(error),
-      tldSupported: isTldSupported
+      tldSupported: isTldSupported,
+      errorDetails: {
+        network: true,
+        cors: String(error).includes('CORS') || String(error).includes('cross-origin'),
+        apiError: String(error).includes('500') || String(error).includes('API')
+      },
+      alternativeLinks: generateAlternativeLinks(normalizedDomain)
     };
   }
+}
+
+/**
+ * Generate alternative links for domain lookup
+ */
+function generateAlternativeLinks(domain: string): Array<{name: string, url: string}> {
+  return [
+    {
+      name: 'ICANN Lookup',
+      url: `https://lookup.icann.org/en/lookup?q=${domain}&t=a`
+    },
+    {
+      name: 'WhoisXmlApi',
+      url: `https://www.whoisxmlapi.com/whois-lookup-result.php?domain=${domain}`
+    },
+    {
+      name: 'DomainTools',
+      url: `https://whois.domaintools.com/${domain}`
+    },
+    {
+      name: 'Whois.com',
+      url: `https://www.whois.com/whois/${domain}`
+    }
+  ];
 }
 
 /**
