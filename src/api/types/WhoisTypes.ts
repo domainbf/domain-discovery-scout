@@ -41,4 +41,5 @@ export interface WhoisResult {
   lastUpdated?: string;  // For backward compatibility
   registrantEmail?: string; // For backward compatibility
   registrantPhone?: string; // For backward compatibility
+  tldSupported?: boolean; // Added for TLD support indication
 }

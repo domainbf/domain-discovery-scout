@@ -72,7 +72,8 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
         ...fallbackData[normalizedDomain],
         error: `查询出错，使用缓存数据: ${result.error}`,
         source: 'fallback-data',
-        rawData: `原始错误: ${result.error}\n\n使用预设的域名信息作为备用数据。这些信息可能不是最新的，仅供参考。`
+        rawData: `原始错误: ${result.error}\n\n使用预设的域名信息作为备用数据。这些信息可能不是最新的，仅供参考。`,
+        tldSupported: isTldSupported
       };
       
       // Store in cache
@@ -129,7 +130,8 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
         ...fallbackData[normalizedDomain],
         error: `查询失败，使用缓存数据: ${error instanceof Error ? error.message : String(error)}`,
         source: 'fallback-data',
-        rawData: `原始错误: ${error}\n\n使用预设的域名信息作为备用数据。这些信息可能不是最新的，仅供参考。`
+        rawData: `原始错误: ${error}\n\n使用预设的域名信息作为备用数据。这些信息可能不是最新的，仅供参考。`,
+        tldSupported: isTldSupported
       };
       
       // Store in cache
@@ -145,7 +147,8 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
     return {
       domain: normalizedDomain,
       error: `查询失败: ${error instanceof Error ? error.message : String(error)}`,
-      rawData: String(error)
+      rawData: String(error),
+      tldSupported: isTldSupported
     };
   }
 }
