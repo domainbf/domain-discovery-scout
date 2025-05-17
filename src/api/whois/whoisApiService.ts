@@ -10,16 +10,16 @@ import { whoisServers } from '@/utils/whois-servers';
 export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
   console.log(`Requesting domain-info API: /api/domain-info?domain=${domain}`);
   
-  // Validate the domain format before sending the request
-  // Updated regex to fix pattern matching issues
-  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  // 更宽松的域名正则表达式
+  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
   if (!domainRegex.test(domain)) {
     return { 
       domain,
       error: "域名格式无效",
       rawData: `Invalid domain format: ${domain}`,
       errorDetails: {
-        formatError: true
+        formatError: true,
+        patternError: true
       }
     };
   }
@@ -32,7 +32,8 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'User-Agent': 'Domain-Info-Tool/1.0'
-      }
+      },
+      cache: 'no-store'
     });
     
     console.log("domain-info API fetch completed with status:", response.status);
@@ -58,16 +59,33 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
     }
     
     try {
+      const contentType = response.headers.get('content-type');
+      // 检查内容类型是否为HTML
+      if (contentType && contentType.includes('text/html')) {
+        const htmlText = await response.text();
+        return { 
+          domain,
+          error: `API返回了HTML而非JSON数据`,
+          rawData: htmlText.substring(0, 500) + "... (response truncated)",
+          errorDetails: {
+            formatError: true,
+            parseError: true
+          }
+        };
+      }
+      
       const data = await response.json();
       return data;
     } catch (parseError) {
       console.error("Error parsing domain-info API response:", parseError);
+      const errorText = await response.text();
       return {
         domain,
         error: `API响应解析错误: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-        rawData: `解析错误: ${String(parseError)}`,
+        rawData: errorText.length > 500 ? errorText.substring(0, 500) + "... (response truncated)" : errorText,
         errorDetails: {
-          parseError: true
+          parseError: true,
+          formatError: errorText.includes('<!DOCTYPE html>') || errorText.includes('<html')
         }
       };
     }
@@ -103,15 +121,16 @@ export async function queryDomainInfoApi(domain: string): Promise<WhoisResult> {
  * Query domain information using direct WHOIS lookup
  */
 export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
-  // Updated regex to fix pattern matching issues
-  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  // 使用更宽松的域名验证正则表达式
+  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
   if (!domainRegex.test(domain)) {
     return { 
       domain,
       error: "域名格式无效",
       rawData: `Invalid domain format: ${domain}`,
       errorDetails: {
-        formatError: true
+        formatError: true,
+        patternError: true
       }
     };
   }
@@ -166,6 +185,22 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
     }
     
     try {
+      const contentType = response.headers.get('content-type');
+      // 检查内容类型是否为HTML
+      if (contentType && contentType.includes('text/html')) {
+        const htmlText = await response.text();
+        console.log("WHOIS API returned HTML instead of JSON");
+        return { 
+          domain,
+          error: `WHOIS API返回了HTML而非JSON数据`,
+          rawData: htmlText.substring(0, 500) + "... (response truncated)",
+          errorDetails: {
+            formatError: true,
+            parseError: true
+          }
+        };
+      }
+      
       const data = await response.json();
       return data;
     } catch (parseError) {
@@ -174,10 +209,11 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
       // Check for pattern matching errors
       const errorStr = String(parseError);
       if (errorStr.includes('expected pattern')) {
+        const errorContent = await response.text();
         return {
           domain,
           error: `WHOIS响应解析错误: 域名格式不符合WHOIS服务器要求`,
-          rawData: errorStr,
+          rawData: errorStr + "\n\n响应内容: " + errorContent.substring(0, 500),
           errorDetails: {
             formatError: true,
             patternError: true
@@ -188,7 +224,7 @@ export async function queryDirectWhois(domain: string): Promise<WhoisResult> {
       return {
         domain,
         error: `WHOIS响应解析错误: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-        rawData: errorStr,
+        rawData: String(parseError),
         errorDetails: {
           parseError: true
         }

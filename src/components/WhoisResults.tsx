@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { WhoisResult } from '@/api/whoisService';
+import { WhoisResult } from '@/api/types/WhoisTypes';
 import ErrorResult from './whois/ErrorResult';
 import DomainHeader from './whois/DomainHeader';
 import StatusBadges from './whois/StatusBadges';
@@ -28,14 +28,18 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
     );
   }
 
+  // 处理数据部分缺失的情况，确保组件不会因为数据不完整而崩溃
   return (
     <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 shadow-lg p-6">
       <DomainHeader domain={domain} />
-      <StatusBadges status={data.status || []} dnssec={data.dnssec} />
+      <StatusBadges 
+        status={data.status || []} 
+        dnssec={data.dnssec} 
+      />
       <DateInfo 
-        created={data.created} 
-        updated={data.updated} 
-        expires={data.expires} 
+        created={data.created || data.creationDate} 
+        updated={data.updated || data.lastUpdated} 
+        expires={data.expires || data.expiryDate} 
         registrar={data.registrar} 
       />
       <NameserversList nameservers={data.nameservers} />

@@ -9,7 +9,7 @@ import { rdapBootstrap, rdapEndpoints, isRdapSupported } from '@/utils/whois-ser
  * @returns Promise with WhoisResult
  */
 export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
-  // Updated regex to fix pattern matching errors
+  // 更宽松的域名正则表达式，支持更多有效域名格式
   const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   if (!domainRegex.test(domain)) {
     return { 
@@ -17,7 +17,8 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
       error: "域名格式无效",
       rawData: `Invalid domain format: ${domain}`,
       errorDetails: {
-        formatError: true
+        formatError: true,
+        patternError: true
       }
     };
   }
@@ -46,16 +47,14 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
   
   console.log("Requesting RDAP info:", rdapUrl);
   
-  // Reduced timeout to 10 seconds to improve user experience
+  // 降低超时时间到8秒，提高用户体验
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
   
   try {
     console.log("RDAP fetch started...");
     
-    // Skip the no-cors test as it often misleads
-    
-    // Now do the actual request with better error handling
+    // 尝试一个不带凭据的请求，可能有助于减少CORS问题
     const response = await fetch(rdapUrl, {
       method: 'GET',
       headers: {
@@ -63,7 +62,8 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
         'User-Agent': 'Domain-Info-Tool/1.0'
       },
       signal: controller.signal,
-      cache: 'no-store' // Disable caching for fresh results
+      cache: 'no-store', // Disable caching for fresh results
+      credentials: 'omit' // 明确不发送凭据，减少CORS问题
     });
     
     clearTimeout(timeoutId);
@@ -77,7 +77,8 @@ export async function queryRdapInfo(domain: string): Promise<WhoisResult> {
           error: "域名未注册或RDAP服务器中无记录",
           source: 'rdap',
           errorDetails: {
-            notFound: true
+            notFound: true,
+            statusCode: response.status
           }
         };
       }

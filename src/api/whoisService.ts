@@ -15,15 +15,16 @@ export type { WhoisResult, Contact } from './types/WhoisTypes';
  */
 export async function queryWhois(domain: string): Promise<WhoisResult> {
   try {
-    // 更新域名格式验证，支持单字符域名和国别域名
-    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+$/;
+    // 改进域名格式验证，使用更宽松的正则表达式
+    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
     if (!domainRegex.test(domain)) {
       return { 
         error: "域名格式无效", 
         domain,
         status: ["invalid"],
         errorDetails: {
-          notSupported: true
+          formatError: true,
+          patternError: true
         }
       };
     }
@@ -82,7 +83,9 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
           network: directResult.error.includes('网络') || directResult.error.includes('connect'),
           cors: directResult.error.includes('CORS') || directResult.error.includes('跨域'),
           apiError: directResult.error.includes('API') || directResult.error.includes('500'),
-          timeout: directResult.error.includes('超时') || directResult.error.includes('timeout')
+          timeout: directResult.error.includes('超时') || directResult.error.includes('timeout'),
+          formatError: directResult.error.includes('格式') || directResult.error.includes('pattern'),
+          parseError: directResult.error.includes('解析') || directResult.error.includes('parse')
         };
       } catch (error) {
         console.warn(`Direct WHOIS error: ${error instanceof Error ? error.message : String(error)}`);
@@ -111,7 +114,29 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     let apiError = null;
     try {
       console.log("Trying domain-info API as last resort...");
-      const result = await queryDomainInfoApi(domain);
+      const response = await fetch(`/api/domain-info?domain=${encodeURIComponent(domain)}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Domain-Info-Tool/1.0'
+        },
+        cache: 'no-store' // 禁用缓存以获取最新结果
+      });
+      
+      if (!response.ok) {
+        apiError = `API请求失败: ${response.status}`;
+        throw new Error(apiError);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        console.log("API returned HTML instead of JSON");
+        apiError = "API返回了HTML而非JSON数据";
+        throw new Error(apiError);
+      }
+      
+      const result = await response.json();
       if (!result.error) {
         return convertToLegacyFormat(result);
       }
@@ -130,12 +155,14 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         : `不支持的顶级域名: .${tld}，且尝试的备选查询方法均失败`,
       source: "all-methods-failed",
       status: ["error"],
-      rawData: `所有查询方法均失败:\n- ${isSupportedTld ? "直接WHOIS: 查询失败，可能是注册局限制\n- " : ""}RDAP: ${rdapError}\n- API: ${apiError}\n\n可能原因:\n- 网络连接问题\n- WHOIS服务器不可用\n- 域名注册局限制查询`,
+      rawData: `所有查询方法均失败:\n- ${isSupportedTld ? "直接WHOIS: 查询失败，可能是注册局限制\n- " : ""}RDAP: ${rdapError}\n- API: ${apiError}\n\n可能原因:\n- 网络连接问题\n- WHOIS服务器不可用\n- 域名注册局限制查询\n- 浏览器CORS政策限制`,
       errorDetails: {
         network: true,
         cors: rdapError?.includes('CORS') || String(rdapError).includes('跨域'),
         apiError: true,
-        serverError: true
+        serverError: true,
+        formatError: apiError?.includes('pattern') || String(apiError).includes('格式'),
+        parseError: apiError?.includes('parse') || String(apiError).includes('解析')
       },
       alternativeLinks: [
         {
@@ -145,6 +172,10 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         {
           name: 'WhoisXmlApi',
           url: `https://www.whoisxmlapi.com/whois-lookup-result.php?domain=${domain}`
+        },
+        {
+          name: 'DomainTools',
+          url: `https://whois.domaintools.com/${domain}`
         }
       ]
     };
@@ -156,7 +187,9 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       status: ["error"],
       rawData: String(error),
       errorDetails: {
-        network: true
+        network: true,
+        parseError: String(error).includes('parse') || String(error).includes('解析'),
+        formatError: String(error).includes('pattern') || String(error).includes('格式')
       }
     };
   }
