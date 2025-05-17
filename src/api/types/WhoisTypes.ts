@@ -49,6 +49,12 @@ export interface WhoisResult {
     apiError?: boolean;
     serverError?: boolean;
     notSupported?: boolean;
+    formatError?: boolean; // Added for format validation errors
+    parseError?: boolean;  // Added for parsing errors
+    patternError?: boolean; // Added for pattern matching errors
+    notFound?: boolean;    // Added for domain not found errors
+    statusCode?: number;   // Added for HTTP status codes
   };  // Added for more detailed error information
   alternativeLinks?: Array<{name: string, url: string}>; // For providing alternative resources
 }
+
