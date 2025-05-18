@@ -1,9 +1,9 @@
 
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { Request, Response } from 'express';
 import net from 'net';
 import { whoisServers } from '@/utils/whois-servers';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: Request, res: Response) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -16,7 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { domain } = req.query;
+    const domain = req.query.domain as string;
     
     if (!domain || typeof domain !== 'string') {
       return res.status(400).json({ error: '请提供域名参数' });
