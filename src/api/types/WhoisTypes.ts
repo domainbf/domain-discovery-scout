@@ -57,4 +57,3 @@ export interface WhoisResult {
   };  // Added for more detailed error information
   alternativeLinks?: Array<{name: string, url: string}>; // For providing alternative resources
 }
-

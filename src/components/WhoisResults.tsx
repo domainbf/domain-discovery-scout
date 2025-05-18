@@ -17,7 +17,12 @@ interface WhoisResultsProps {
 
 const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
   // Check if data contains an error or if it has a specific HTML content error
-  const hasError = data.error || (data.rawData && (data.rawData.includes('<!DOCTYPE html>') || data.rawData.includes('<html')));
+  const hasError = data.error || (data.rawData && (
+    data.rawData.includes('<!DOCTYPE html>') || 
+    data.rawData.includes('<html') ||
+    data.rawData.includes('<body') ||
+    data.rawData.includes('<head')
+  ));
   
   if (hasError) {
     // If rawData contains HTML but error doesn't specifically mention it, add a clearer error
@@ -25,12 +30,16 @@ const WhoisResults: React.FC<WhoisResultsProps> = ({ data, domain }) => {
     let errorDetails = data.errorDetails || {};
     
     if (!errorText.includes('HTML') && data.rawData && 
-        (data.rawData.includes('<!DOCTYPE html>') || data.rawData.includes('<html'))) {
+        (data.rawData.includes('<!DOCTYPE html>') || 
+         data.rawData.includes('<html') ||
+         data.rawData.includes('<body') ||
+         data.rawData.includes('<head'))) {
       errorText = `${errorText || '查询返回了非预期的HTML数据而不是JSON'}`;
       errorDetails = {
         ...errorDetails,
         formatError: true,
-        parseError: true
+        parseError: true,
+        serverError: true
       };
     }
     

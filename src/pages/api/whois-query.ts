@@ -1,49 +1,31 @@
 
+import type { NextApiRequest, NextApiResponse } from 'next';
 import net from 'net';
+import { whoisServers } from '@/utils/whois-servers';
 
-// WHOIS servers list - same as in api/whois.js
-const whoisServers: Record<string, string> = {
-  "com": "whois.verisign-grs.com",
-  "net": "whois.verisign-grs.com",
-  "org": "whois.pir.org",
-  "cn": "whois.cnnic.cn",
-  "io": "whois.nic.io",
-  "info": "whois.afilias.net",
-  "biz": "whois.neulevel.biz",
-  "mobi": "whois.dotmobiregistry.net",
-  "name": "whois.nic.name",
-  "co": "whois.nic.co",
-  "tv": "whois.nic.tv",
-  "me": "whois.nic.me",
-  "cc": "ccwhois.verisign-grs.com",
-  "us": "whois.nic.us",
-  "de": "whois.denic.de",
-  "uk": "whois.nic.uk",
-  "jp": "whois.jprs.jp",
-  "fr": "whois.nic.fr",
-  "au": "whois.auda.org.au",
-  "ru": "whois.tcinet.ru",
-  "ch": "whois.nic.ch",
-  "es": "whois.nic.es",
-  "ca": "whois.cira.ca",
-  "in": "whois.registry.in",
-  "nl": "whois.domain-registry.nl",
-  "it": "whois.nic.it",
-  "se": "whois.iis.se",
-  "no": "whois.norid.no"
-};
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Content-Type', 'application/json');
 
-// Function to handle WHOIS queries as a direct function
-export async function handleWhoisQuery(domain: string) {
+  // Handle OPTIONS request for CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).json({ status: 'ok' });
+  }
+
   try {
-    if (!domain) {
-      return { error: '请提供域名参数' };
+    const { domain } = req.query;
+    
+    if (!domain || typeof domain !== 'string') {
+      return res.status(400).json({ error: '请提供域名参数' });
     }
 
     // 验证域名格式
-    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](\.[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9])+$/;
     if (!domainRegex.test(domain)) {
-      return { error: '无效的域名格式' };
+      return res.status(400).json({ error: '无效的域名格式' });
     }
 
     // 提取顶级域名
@@ -51,22 +33,22 @@ export async function handleWhoisQuery(domain: string) {
     const whoisServer = whoisServers[tld];
     
     if (!whoisServer) {
-      return { error: `不支持的顶级域名: .${tld}` };
+      return res.status(404).json({ error: `不支持的顶级域名: .${tld}` });
     }
     
     console.log(`正在查询WHOIS服务器 ${whoisServer} 获取 ${domain} 的信息...`);
     
     // 直接调用WHOIS服务器
     const whoisData = await queryWhoisServer(domain, whoisServer);
-    const parsedResult = parseWhoisResponse(whoisData);
+    const parsedResult = parseWhoisResponse(whoisData, domain);
     
-    return parsedResult;
+    return res.status(200).json(parsedResult);
   } catch (error) {
     console.error('WHOIS查询错误:', error);
-    return {
+    return res.status(500).json({
       error: `查询出错: ${error instanceof Error ? error.message : String(error)}`,
       message: String(error)
-    };
+    });
   }
 }
 
@@ -94,15 +76,16 @@ function queryWhoisServer(domain: string, server: string): Promise<string> {
     // Set timeout for the connection
     client.setTimeout(10000, () => {
       client.destroy();
-      reject(new Error('Connection timeout'));
+      reject(new Error('连接超时'));
     });
   });
 }
 
 // Parse WHOIS response to extract important information
-function parseWhoisResponse(response: string) {
+function parseWhoisResponse(response: string, domain: string) {
   // Always include raw data for debugging and display
   const result: any = {
+    domain,
     rawData: response
   };
 
@@ -138,6 +121,12 @@ function parseWhoisResponse(response: string) {
       /Domain Status:\s*(.*?)[\r\n]/i,
       /状态:\s*(.*?)[\r\n]/i
     ],
+    nameservers: [
+      /Name Server:\s*(.*?)[\r\n]/ig,
+      /Nameservers?:\s*(.*?)[\r\n]/ig,
+      /域名服务器:\s*(.*?)[\r\n]/ig,
+      /nserver:\s*(.*?)[\r\n]/ig
+    ],
     registrant: [
       /Registrant(?:\s+Organization)?:\s*(.*?)[\r\n]/i,
       /注册人:\s*(.*?)[\r\n]/i,
@@ -153,18 +142,23 @@ function parseWhoisResponse(response: string) {
     ]
   };
 
+  // Check for empty response
+  if (!response || response.trim() === '') {
+    result.error = "WHOIS服务器返回空响应";
+    return result;
+  }
+
+  // Check if the response contains "No match" or similar phrases
+  if (response.match(/no match|not found|no data found|not registered|no entries found|not available|没有找到|not exist/i)) {
+    result.error = "域名未注册或无法找到记录";
+    return result;
+  }
+
   // Process each pattern
   for (const [field, patternsList] of Object.entries(patterns)) {
-    if (field === 'nameServers') {
+    if (field === 'nameservers') {
       const nameServers: string[] = [];
-      const nameServerPatterns = [
-        /Name Server:\s*(.*?)[\r\n]/ig,
-        /Nameservers?:\s*(.*?)[\r\n]/ig,
-        /域名服务器:\s*(.*?)[\r\n]/ig,
-        /nserver:\s*(.*?)[\r\n]/ig
-      ];
-      
-      for (const pattern of nameServerPatterns) {
+      for (const pattern of patternsList) {
         let match;
         while ((match = pattern.exec(response)) !== null) {
           if (match[1] && match[1].trim()) {
@@ -175,6 +169,18 @@ function parseWhoisResponse(response: string) {
       
       if (nameServers.length > 0) {
         result.nameServers = nameServers;
+      }
+    } else if (field === 'status') {
+      const statuses: string[] = [];
+      for (const pattern of patternsList) {
+        const match = response.match(pattern);
+        if (match && match[1] && match[1].trim()) {
+          statuses.push(match[1].trim());
+        }
+      }
+      
+      if (statuses.length > 0) {
+        result.status = statuses;
       }
     } else {
       for (const pattern of patternsList) {

@@ -1,9 +1,9 @@
 
-// WHOIS 查询服务 - 使用优化的查询系统，优先采用RDAP
+// WHOIS 查询服务 - 使用优化的查询系统，优先采用本地API代理
 
 import { WhoisResult } from './types/WhoisTypes';
 import { queryRdapInfo } from './rdap/rdapService';
-import { queryDomainInfoApi, queryDirectWhois } from './whois/whoisApiService';
+import { queryWhoisLocally, queryDomainInfoLocally, isTldSupported } from './whois/localWhoisService';
 import { convertToLegacyFormat } from './whois/whoisParser';
 import { whoisServers, specialTlds } from '@/utils/whois-servers';
 
@@ -63,43 +63,47 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         };
       }
       
+      if (tld === "cn") {
+        return {
+          domain: domain,
+          registrar: "中国互联网络信息中心CNNIC",
+          source: "special-handler-cn",
+          status: ["ok"],
+          nameservers: ["请访问官方网站查询..."],
+          error: `中国域名(.cn)查询可能受到限制，请访问官方网站查询: http://whois.cnnic.cn/`,
+          rawData: `中国域名管理机构CNNIC可能对WHOIS查询有限制，建议访问 http://whois.cnnic.cn/ 查询 ${domain} 信息。`,
+          errorDetails: {
+            notSupported: true,
+            serverError: true
+          },
+          alternativeLinks: [{
+            name: '中国域名信息查询中心',
+            url: `http://whois.cnnic.cn/WhoisServlet?domain=${domain}`
+          }]
+        };
+      }
+      
       // 可以根据需要添加其他特殊TLD处理逻辑
     }
 
-    // For supported TLDs, first try direct WHOIS (our preferred and most reliable method)
+    // For supported TLDs, first try local WHOIS proxy (our preferred and most reliable method)
     if (isSupportedTld) {
       try {
-        console.log(`TLD ${tld} is supported, trying direct WHOIS first...`);
-        const directResult = await queryDirectWhois(domain);
-        if (!directResult.error) {
-          console.log("Direct WHOIS lookup successful");
-          return directResult;
+        console.log(`TLD ${tld} is supported, trying local WHOIS proxy first...`);
+        const whoisResult = await queryWhoisLocally(domain);
+        if (!whoisResult.error) {
+          console.log("Local WHOIS proxy lookup successful");
+          return whoisResult;
         }
-        console.warn(`Direct WHOIS lookup failed: ${directResult.error}`);
-        
-        // 检查是否返回了HTML而不是JSON，这通常是配置问题
-        if (directResult.error.includes('HTML')) {
-          console.warn("WHOIS API returned HTML instead of JSON. This is likely a server configuration issue.");
-        }
-        
-        // Enhance the error data with details
-        directResult.errorDetails = {
-          ...(directResult.errorDetails || {}),
-          network: directResult.error.includes('网络') || directResult.error.includes('connect'),
-          cors: directResult.error.includes('CORS') || directResult.error.includes('跨域'),
-          apiError: directResult.error.includes('API') || directResult.error.includes('500'),
-          timeout: directResult.error.includes('超时') || directResult.error.includes('timeout'),
-          formatError: directResult.error.includes('格式') || directResult.error.includes('pattern') || directResult.error.includes('HTML'),
-          parseError: directResult.error.includes('解析') || directResult.error.includes('parse') || directResult.error.includes('HTML')
-        };
+        console.warn(`Local WHOIS proxy lookup failed: ${whoisResult.error}`);
       } catch (error) {
-        console.warn(`Direct WHOIS error: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(`Local WHOIS error: ${error instanceof Error ? error.message : String(error)}`);
       }
     } else {
       console.log(`TLD ${tld} not directly supported in our WHOIS servers list, will try alternative methods`);
     }
 
-    // If direct WHOIS fails or TLD not supported, try RDAP as next option
+    // If local WHOIS fails or TLD not supported, try RDAP as next option
     let rdapError = null;
     try {
       console.log("Trying RDAP lookup...");
@@ -110,55 +114,22 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       }
       console.warn(`RDAP lookup failed: ${rdapResult.error}`);
       rdapError = rdapResult.error;
-      
-      // 检查是否返回了HTML而不是JSON
-      if (rdapResult.error.includes('HTML')) {
-        console.warn("RDAP API returned HTML instead of JSON. This could be due to CORS or server configuration.");
-      }
     } catch (error) {
       console.warn(`RDAP error: ${error instanceof Error ? error.message : String(error)}`);
       rdapError = error instanceof Error ? error.message : String(error);
     }
 
-    // If RDAP fails, try the domain-info API as last resort
+    // If RDAP fails, try the domain-info API through our local proxy
     let apiError = null;
     try {
-      console.log("Trying domain-info API as last resort...");
-      const response = await fetch(`/api/domain-info?domain=${encodeURIComponent(domain)}&format=json`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'Domain-Info-Tool/1.0'
-        },
-        cache: 'no-store' // 禁用缓存以获取最新结果
-      });
+      console.log("Trying domain-info API through proxy as last resort...");
+      const result = await queryDomainInfoLocally(domain);
       
-      if (!response.ok) {
-        apiError = `API请求失败: ${response.status}`;
-        throw new Error(apiError);
+      if (!result.error) {
+        return convertToLegacyFormat(result);
       }
-
-      // 检查是否返回了HTML而不是JSON
-      const contentType = response.headers.get('content-type');
-      const responseText = await response.text();
-      
-      if (responseText.includes('<!DOCTYPE html>') || 
-          responseText.includes('<html') || 
-          (contentType && contentType.includes('text/html'))) {
-        console.log("API returned HTML instead of JSON");
-        apiError = "API返回了HTML而非JSON数据";
-        throw new Error(apiError);
-      }
-      
-      // Parse JSON from text
-      const data = JSON.parse(responseText);
-      
-      if (!data.error) {
-        return convertToLegacyFormat(data);
-      }
-      console.warn(`domain-info API query failed: ${data.error}`);
-      apiError = data.error;
+      console.warn(`domain-info API query failed: ${result.error}`);
+      apiError = result.error;
     } catch (error) {
       console.warn(`domain-info API error: ${error instanceof Error ? error.message : String(error)}`);
       apiError = error instanceof Error ? error.message : String(error);
@@ -172,7 +143,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         : `不支持的顶级域名: .${tld}，且尝试的备选查询方法均失败`,
       source: "all-methods-failed",
       status: ["error"],
-      rawData: `所有查询方法均失败:\n- ${isSupportedTld ? "直接WHOIS: 查询失败，可能是注册局限制\n- " : ""}RDAP: ${rdapError}\n- API: ${apiError}\n\n可能原因:\n- 网络连接问题\n- WHOIS服务器不可用\n- 域名注册局限制查询\n- 浏览器CORS政策限制`,
+      rawData: `所有查询方法均失败:\n- ${isSupportedTld ? "本地WHOIS代理: 查询失败\n- " : ""}RDAP: ${rdapError}\n- API: ${apiError}\n\n可能原因:\n- 网络连接问题\n- WHOIS服务器不可用\n- 域名注册局限制查询\n- API返回了HTML而非JSON数据`,
       errorDetails: {
         network: true,
         cors: rdapError?.includes('CORS') || String(rdapError).includes('跨域'),
