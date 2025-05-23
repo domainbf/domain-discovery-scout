@@ -113,6 +113,31 @@ export function isSupportedTld(domain: string): boolean {
 }
 
 /**
+ * Check if a domain is well-known to provide fallback data for offline mode
+ * @param domain Domain to check
+ * @returns boolean indicating if the domain is well-known
+ */
+export function isWellKnownDomain(domain: string): boolean {
+  const wellKnownDomains = [
+    'google.com',
+    'microsoft.com',
+    'apple.com',
+    'amazon.com',
+    'facebook.com',
+    'twitter.com',
+    'github.com',
+    'youtube.com',
+    'netflix.com',
+    'baidu.com',
+    'alibaba.com',
+    'tencent.com'
+  ];
+  
+  const normalizedDomain = domain.toLowerCase().trim();
+  return wellKnownDomains.includes(normalizedDomain);
+}
+
+/**
  * Get formatted domain status display text
  * @param status Status code or array of status codes
  * @returns Formatted status text
