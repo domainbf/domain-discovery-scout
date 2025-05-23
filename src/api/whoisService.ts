@@ -6,7 +6,7 @@ import { queryWhoisLocally, queryRdapLocally, queryDomainWithBestMethod, isTldSu
 import { convertToLegacyFormat } from './whois/whoisParser';
 import { isRdapSupported, getAlternativeRdapEndpoints } from './rdap/rdapEndpoints';
 import { whoisServers, specialTlds } from '@/utils/whois-servers';
-import { queryLocalWhois } from './utils/apiHelper';
+import { queryLocalWhois, queryDirectWhois } from './utils/apiHelper';
 
 // Re-export types for use in other files
 export type { WhoisResult, Contact } from './types/WhoisTypes';
@@ -67,8 +67,8 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       
       if (tld === "cn") {
         try {
-          // 尝试直接查询CN域名
-          const cnApiResult = await queryLocalWhois(domain);
+          // 尝试直接查询CN域名 - 使用直接API
+          const cnApiResult = await queryDirectWhois(domain);
           if (!cnApiResult.error) {
             return {
               ...cnApiResult,
@@ -154,17 +154,31 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       }
     }
     
-    // Last resort: Try direct API integration
+    // Try direct WHOIS API (new fallback)
     try {
-      console.log(`Trying direct API for ${domain}...`);
-      const directResult = await queryLocalWhois(domain, 'whois');
+      console.log(`Trying direct WHOIS API for ${domain}...`);
+      const directResult = await queryDirectWhois(domain);
       if (!directResult.error || 
           (directResult.rawData && directResult.rawData.length > 50)) {
-        console.log(`Direct API query returned data for ${domain}`);
+        console.log(`Direct WHOIS query returned data for ${domain}`);
         return directResult;
       }
+      console.warn("Direct WHOIS API failed or returned incomplete data");
+    } catch (directError) {
+      console.warn(`Direct API error: ${directError instanceof Error ? directError.message : String(directError)}`);
+    }
+    
+    // Last resort: Try direct API integration
+    try {
+      console.log(`Trying local API for ${domain}...`);
+      const localResult = await queryLocalWhois(domain, 'whois');
+      if (!localResult.error || 
+          (localResult.rawData && localResult.rawData.length > 50)) {
+        console.log(`Local API query returned data for ${domain}`);
+        return localResult;
+      }
     } catch (error) {
-      console.warn(`Direct API error: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`Local API error: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     // If no support for both WHOIS and RDAP, return a clear error

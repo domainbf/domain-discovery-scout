@@ -23,11 +23,11 @@ export const rdapEndpoints: Record<string, string> = {
   "uk": "https://rdap.nominet.uk/uk/"
 };
 
-// List of TLDs known to support RDAP
+// List of TLDs known to support RDAP (expanded list)
 export const rdapSupportedTlds: string[] = [
   "com", "net", "org", "info", "biz", "io", "app", "dev", 
   "xyz", "online", "site", "club", "edu", "gov", "us", "ca",
-  "ai", "co", "me", "uk", "eu"
+  "ai", "co", "me", "uk", "eu", "ru", "jp", "fr", "au"
 ];
 
 // Check if a TLD supports RDAP protocol
@@ -52,6 +52,7 @@ export function getAlternativeRdapEndpoints(domain: string): string[] {
   return [
     `https://rdap.org/domain/${encodeURIComponent(domain)}`, 
     `https://www.rdap.net/domain/${encodeURIComponent(domain)}`,
-    `https://rdap.teleconsult.at/domain/${encodeURIComponent(domain)}`
+    `https://rdap.teleconsult.at/domain/${encodeURIComponent(domain)}`,
+    `https://rdap-bootstrap.arin.net/bootstrap/domain/${encodeURIComponent(domain)}`
   ];
 }
