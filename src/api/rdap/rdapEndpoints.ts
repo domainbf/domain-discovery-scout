@@ -20,14 +20,22 @@ export const rdapEndpoints: Record<string, string> = {
   "us": "https://rdap.publicinterestregistry.org/rdap/",
   "eu": "https://rdap.eu/",
   "ca": "https://rdap.ca/",
-  "uk": "https://rdap.nominet.uk/uk/"
+  "uk": "https://rdap.nominet.uk/uk/",
+  "de": "https://rdap.denic.de/domain/",
+  "fr": "https://rdap.nic.fr/",
+  "jp": "https://rdap.jprs.jp/",
+  "au": "https://rdap.auda.org.au/",
+  "ru": "https://rdap.tcinet.ru/",
+  "br": "https://rdap.registro.br/",
+  "es": "https://rdap.nic.es/"
 };
 
 // List of TLDs known to support RDAP (expanded list)
 export const rdapSupportedTlds: string[] = [
   "com", "net", "org", "info", "biz", "io", "app", "dev", 
   "xyz", "online", "site", "club", "edu", "gov", "us", "ca",
-  "ai", "co", "me", "uk", "eu", "ru", "jp", "fr", "au"
+  "ai", "co", "me", "uk", "eu", "ru", "jp", "fr", "au", "de",
+  "br", "es", "nl", "it", "pl", "ch", "se", "no", "fi", "dk"
 ];
 
 // Check if a TLD supports RDAP protocol

@@ -16,30 +16,38 @@ export const isHtmlResponse = (content: string): boolean => {
 // Parse response safely, ensuring JSON format with better error handling
 export const safeParseResponse = async (response: Response): Promise<any> => {
   const contentType = response.headers.get('content-type');
+  
+  // First check if the response is empty
+  if (!response.ok) {
+    console.error(`API请求失败，HTTP状态码: ${response.status}`);
+    throw new Error(`API请求失败，HTTP状态码: ${response.status}`);
+  }
+  
   const responseText = await response.text();
+  
+  // Check if response is completely empty
+  if (!responseText || responseText.trim() === '') {
+    console.error('API返回了空响应，可能服务器端出现问题');
+    throw new Error('API返回了空响应，可能是由于网络问题或服务器错误');
+  }
   
   // Check if we got HTML instead of JSON
   if (isHtmlResponse(responseText) || (contentType && contentType.includes('text/html'))) {
-    console.error('API returned HTML instead of expected JSON', responseText.substring(0, 200));
-    throw new Error('API返回了HTML而非JSON数据');
-  }
-  
-  // Check for empty or malformed response
-  if (!responseText || responseText.trim() === '') {
-    throw new Error('API返回了空响应');
+    console.error('API返回了HTML而非预期的JSON数据', responseText.substring(0, 200));
+    throw new Error('API返回了HTML而非JSON数据，可能是由于服务器配置问题');
   }
   
   try {
     // Try to parse the response as JSON
     return JSON.parse(responseText);
   } catch (e) {
-    console.error('Failed to parse API response:', responseText.substring(0, 200));
+    console.error('解析API响应失败:', responseText.substring(0, 200));
     throw new Error(`解析响应失败: ${e instanceof Error ? e.message : String(e)}\n原始响应: ${responseText.substring(0, 200)}...`);
   }
 };
 
 // Make a fetch request with proper error handling and retry logic
-export const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> => {
+export const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 30000): Promise<Response> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -57,18 +65,25 @@ export const fetchWithTimeout = async (url: string, options: RequestInit = {}, t
     
     // Add retry logic for network errors
     let attempts = 0;
-    const maxAttempts = 2;
+    const maxAttempts = 3;
     
     while (attempts < maxAttempts) {
       try {
+        console.log(`尝试请求API (尝试 ${attempts + 1}/${maxAttempts}): ${url}`);
         const response = await fetch(url, fetchOptions);
         clearTimeout(timeoutId);
         
         // Check if response is ok
         if (!response.ok) {
-          console.warn(`API request failed with status: ${response.status} ${response.statusText}`);
+          console.warn(`API请求失败，HTTP状态码: ${response.status} ${response.statusText}`);
           if (response.status === 429) {
             throw new Error('请求频率过高，请稍后再试');
+          }
+          if (response.status === 500) {
+            // 尝试读取错误信息
+            const errorText = await response.text();
+            console.error(`服务器错误 (500)，响应内容: ${errorText.substring(0, 200)}`);
+            throw new Error(`服务器内部错误: ${errorText.substring(0, 100)}`);
           }
         }
         
@@ -81,14 +96,16 @@ export const fetchWithTimeout = async (url: string, options: RequestInit = {}, t
           throw fetchError;
         }
         
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        console.log(`Retrying fetch, attempt ${attempts + 1} of ${maxAttempts}`);
+        // Wait before retrying - exponential backoff
+        const waitTime = Math.pow(2, attempts) * 1000;
+        console.log(`请求失败，${waitTime}ms后重试，错误: ${fetchError}`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        console.log(`重试请求，第 ${attempts + 1} 次，共 ${maxAttempts} 次`);
       }
     }
     
     // This should never be reached, but TypeScript requires a return
-    throw new Error('All fetch attempts failed');
+    throw new Error('所有请求尝试均失败');
   } catch (error) {
     clearTimeout(timeoutId);
     
@@ -118,7 +135,7 @@ export const queryLocalWhois = async (domain: string, type: string = 'whois'): P
     
     // Use proxy API for better error handling
     const apiEndpoint = `/api/whois-query?domain=${encodeURIComponent(domain)}&type=${type}`;
-    console.log(`Querying API endpoint: ${apiEndpoint}`);
+    console.log(`请求API端点: ${apiEndpoint}`);
     
     const response = await fetchWithTimeout(
       apiEndpoint,
@@ -129,7 +146,7 @@ export const queryLocalWhois = async (domain: string, type: string = 'whois'): P
           'Content-Type': 'application/json'
         }
       },
-      30000 // Increased timeout to 30 seconds
+      30000 // 30秒超时
     );
     
     // Now handle the response with our improved parser
@@ -142,7 +159,7 @@ export const queryLocalWhois = async (domain: string, type: string = 'whois'): P
     
     // If we have an error in the result, propagate it
     if (result.error) {
-      console.warn(`API returned error: ${result.error}`);
+      console.warn(`API返回错误: ${result.error}`);
     }
     
     return result;
@@ -165,7 +182,7 @@ export const queryDomainInfoProxy = async (domain: string): Promise<any> => {
           'Content-Type': 'application/json'
         }
       },
-      30000 // Increased timeout
+      30000 // 30秒超时
     );
     
     return await safeParseResponse(response);
@@ -188,7 +205,7 @@ export const queryDirectWhois = async (domain: string): Promise<any> => {
           'Content-Type': 'application/json'
         }
       },
-      30000 // Increased timeout
+      30000 // 30秒超时
     );
     
     return await safeParseResponse(response);
