@@ -1,10 +1,10 @@
 
-// WHOIS 查询服务 - 使用优化的查询系统，优先采用本地API代理
+// WHOIS 查询服务 - 使用优化的查询系统，集成RDAP和WHOIS方法
 
 import { WhoisResult } from './types/WhoisTypes';
-import { queryRdapInfo } from './rdap/rdapService';
-import { queryWhoisLocally, queryDomainInfoLocally, isTldSupported } from './whois/localWhoisService';
+import { queryWhoisLocally, queryRdapLocally, queryDomainWithBestMethod, isTldSupported } from './whois/localWhoisService';
 import { convertToLegacyFormat } from './whois/whoisParser';
+import { isRdapSupported } from './rdap/rdapEndpoints';
 import { whoisServers, specialTlds } from '@/utils/whois-servers';
 
 // Re-export types for use in other files
@@ -35,7 +35,8 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     const tld = domain.split('.').pop()?.toLowerCase() || "";
     
     // Check if the TLD is supported by our local WHOIS servers
-    const isSupportedTld = tld in whoisServers;
+    const supportedWhois = tld in whoisServers;
+    const supportedRdap = isRdapSupported(tld);
     
     // Special TLD handling - 优先处理特殊的国别域名
     if (specialTlds.includes(tld)) {
@@ -82,75 +83,52 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
           }]
         };
       }
-      
-      // 可以根据需要添加其他特殊TLD处理逻辑
     }
 
-    // For supported TLDs, first try local WHOIS proxy (our preferred and most reliable method)
-    if (isSupportedTld) {
-      try {
-        console.log(`TLD ${tld} is supported, trying local WHOIS proxy first...`);
-        const whoisResult = await queryWhoisLocally(domain);
-        if (!whoisResult.error) {
-          console.log("Local WHOIS proxy lookup successful");
-          return whoisResult;
-        }
-        console.warn(`Local WHOIS proxy lookup failed: ${whoisResult.error}`);
-      } catch (error) {
-        console.warn(`Local WHOIS error: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    } else {
-      console.log(`TLD ${tld} not directly supported in our WHOIS servers list, will try alternative methods`);
-    }
-
-    // If local WHOIS fails or TLD not supported, try RDAP as next option
-    let rdapError = null;
+    // Use the best available query method based on domain
     try {
-      console.log("Trying RDAP lookup...");
-      const rdapResult = await queryRdapInfo(domain);
-      if (!rdapResult.error) {
-        console.log("RDAP lookup successful");
-        return rdapResult;
-      }
-      console.warn(`RDAP lookup failed: ${rdapResult.error}`);
-      rdapError = rdapResult.error;
-    } catch (error) {
-      console.warn(`RDAP error: ${error instanceof Error ? error.message : String(error)}`);
-      rdapError = error instanceof Error ? error.message : String(error);
-    }
-
-    // If RDAP fails, try the domain-info API through our local proxy
-    let apiError = null;
-    try {
-      console.log("Trying domain-info API through proxy as last resort...");
-      const result = await queryDomainInfoLocally(domain);
+      console.log(`Using best available query method for ${domain}`);
+      const result = await queryDomainWithBestMethod(domain);
       
       if (!result.error) {
-        return convertToLegacyFormat(result);
+        console.log(`Successfully retrieved information for ${domain}`);
+        return result;
       }
-      console.warn(`domain-info API query failed: ${result.error}`);
-      apiError = result.error;
+      
+      console.warn(`Best method query failed: ${result.error}`);
+      // Return the error result but continue trying other methods
+      return result;
     } catch (error) {
-      console.warn(`domain-info API error: ${error instanceof Error ? error.message : String(error)}`);
-      apiError = error instanceof Error ? error.message : String(error);
+      console.warn(`Best method error: ${error instanceof Error ? error.message : String(error)}`);
     }
     
-    // All methods failed, return a comprehensive error with debug information
+    // If no support for both WHOIS and RDAP, return a clear error
+    if (!supportedWhois && !supportedRdap) {
+      return {
+        domain,
+        error: `不支持的顶级域名: .${tld}，无法获取注册信息`,
+        source: "no-supported-method",
+        status: ["error"],
+        rawData: `当前系统不支持查询 .${tld} 域名，没有可用的WHOIS服务器和RDAP端点配置。`,
+        errorDetails: {
+          notSupported: true
+        },
+        alternativeLinks: [{
+          name: 'ICANN Lookup',
+          url: `https://lookup.icann.org/en/lookup?q=${domain}&t=a`
+        }]
+      };
+    }
+    
     return {
       domain,
-      error: isSupportedTld 
-        ? "无法通过任何渠道获取域名信息" 
-        : `不支持的顶级域名: .${tld}，且尝试的备选查询方法均失败`,
+      error: `所有查询方法均失败，无法获取域名数据`,
       source: "all-methods-failed",
       status: ["error"],
-      rawData: `所有查询方法均失败:\n- ${isSupportedTld ? "本地WHOIS代理: 查询失败\n- " : ""}RDAP: ${rdapError}\n- API: ${apiError}\n\n可能原因:\n- 网络连接问题\n- WHOIS服务器不可用\n- 域名注册局限制查询\n- API返回了HTML而非JSON数据`,
+      rawData: `尝试了所有可用查询方法，但均无法获取 ${domain} 的有效注册数据。`,
       errorDetails: {
-        network: true,
-        cors: rdapError?.includes('CORS') || String(rdapError).includes('跨域'),
         apiError: true,
-        serverError: true,
-        formatError: apiError?.includes('pattern') || String(apiError).includes('格式') || apiError?.includes('HTML'),
-        parseError: apiError?.includes('parse') || String(apiError).includes('解析') || apiError?.includes('HTML')
+        serverError: true
       },
       alternativeLinks: [
         {
@@ -160,10 +138,6 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
         {
           name: 'WhoisXmlApi',
           url: `https://www.whoisxmlapi.com/whois-lookup-result.php?domain=${domain}`
-        },
-        {
-          name: 'DomainTools',
-          url: `https://whois.domaintools.com/${domain}`
         }
       ]
     };

@@ -58,11 +58,14 @@ export const fetchWithTimeout = async (url: string, options: RequestInit = {}, t
 };
 
 // Query our local API proxy for WHOIS data
-export const queryLocalWhois = async (domain: string): Promise<any> => {
+export const queryLocalWhois = async (domain: string, type: string = 'whois'): Promise<any> => {
   try {
-    console.log(`使用本地API代理查询WHOIS: ${domain}`);
+    console.log(`使用本地API代理查询${type === 'rdap' ? 'RDAP' : 'WHOIS'}: ${domain}`);
     
-    const response = await fetchWithTimeout(`/api/whois-query?domain=${encodeURIComponent(domain)}`);
+    const response = await fetchWithTimeout(
+      `/api/whois-query?domain=${encodeURIComponent(domain)}&type=${type}`,
+      { method: 'GET' }
+    );
     
     if (!response.ok) {
       throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
@@ -70,7 +73,7 @@ export const queryLocalWhois = async (domain: string): Promise<any> => {
     
     return await safeParseResponse(response);
   } catch (error) {
-    console.error('本地API代理查询失败:', error);
+    console.error(`本地API代理查询失败:`, error);
     throw error;
   }
 };

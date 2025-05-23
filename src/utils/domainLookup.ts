@@ -1,3 +1,4 @@
+
 // Domain lookup utilities to optimize search and caching
 import { WhoisResult, queryWhois } from '@/api/whoisService';
 import { whoisServers } from '@/utils/whois-servers';
@@ -5,36 +6,6 @@ import { whoisServers } from '@/utils/whois-servers';
 // Simple in-memory cache for domain results
 const cache = new Map<string, { data: WhoisResult, timestamp: number }>();
 const CACHE_TTL = 1000 * 60 * 30; // 30 minutes cache
-
-// Hard-coded fallback data for common domains when lookup fails
-const fallbackData: Record<string, Partial<WhoisResult>> = {
-  "google.com": {
-    registrar: "MarkMonitor Inc.",
-    created: "1997-09-15",
-    expires: "2028-09-14",
-    status: ["clientDeleteProhibited", "clientTransferProhibited", "clientUpdateProhibited"]
-  },
-  "facebook.com": {
-    registrar: "RegistrarSafe, LLC",
-    created: "1997-03-29",
-    expires: "2028-03-30",
-    status: ["clientDeleteProhibited", "clientTransferProhibited", "clientUpdateProhibited"]
-  },
-  "microsoft.com": {
-    registrar: "MarkMonitor Inc.",
-    created: "1991-05-02",
-    expires: "2023-05-03",
-    status: ["clientDeleteProhibited", "clientTransferProhibited", "clientUpdateProhibited"]
-  },
-  "hello.com": {
-    registrar: "GoDaddy.com, LLC",
-    created: "1995-01-28",
-    updated: "2023-01-28",
-    expires: "2024-01-28",
-    status: ["clientDeleteProhibited", "clientTransferProhibited"],
-    nameservers: ["ns1.hello.com", "ns2.hello.com"]
-  }
-};
 
 /**
  * Optimized domain lookup with caching and error handling
@@ -61,45 +32,10 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
     console.log(`Fetching fresh result for ${normalizedDomain}`);
     const result = await queryWhois(normalizedDomain);
     
-    // Check if we got a meaningful error and if we have fallback data
-    if (result.error && normalizedDomain in fallbackData) {
-      console.log(`Using fallback data for ${normalizedDomain} due to lookup error: ${result.error}`);
-      
-      // Combine the error info with fallback data for transparency
-      const fallbackResult: WhoisResult = {
-        domain: normalizedDomain,
-        ...fallbackData[normalizedDomain],
-        error: `查询出错，使用缓存数据: ${result.error}`,
-        source: 'fallback-data',
-        rawData: `原始错误: ${result.error}\n\n使用预设的域名信息作为备用数据。这些信息可能不是最新的，仅供参考。`,
-        tldSupported: isTldSupported,
-        errorDetails: {
-          ...(result.errorDetails || {}),
-          network: result.error.includes('网络') || result.error.includes('connect'),
-          cors: result.error.includes('CORS') || result.error.includes('跨域'),
-          apiError: result.error.includes('API') || result.error.includes('500')
-        }
-      };
-      
-      // Add alternative links for lookup
-      if (!fallbackResult.alternativeLinks) {
-        fallbackResult.alternativeLinks = generateAlternativeLinks(normalizedDomain);
-      }
-      
-      // Store in cache
-      cache.set(normalizedDomain, {
-        data: fallbackResult,
-        timestamp: Date.now()
-      });
-      
-      return fallbackResult;
-    }
-    
-    // 确保总是返回格式一致的结构
+    // Add TLD support info to result
     const formattedResult: WhoisResult = {
-      domain: normalizedDomain,
       ...result,
-      // 添加TLD支持信息，便于前端了解查询过程
+      domain: normalizedDomain,
       tldSupported: isTldSupported
     };
     
@@ -113,59 +49,10 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
   } catch (error) {
     console.error(`Error in domain lookup: ${error}`);
     
-    // 如果是不支持的TLD，返回更具体的错误消息
-    if (!isTldSupported) {
-      const unsupportedResult: WhoisResult = {
-        domain: normalizedDomain,
-        error: `不支持查询 .${tld} 域名, 请使用官方WHOIS服务`,
-        source: 'unsupported-tld',
-        rawData: `当前服务不支持查询 .${tld} 域名。请使用官方WHOIS查询服务或域名注册商提供的查询工具。`,
-        tldSupported: false,
-        errorDetails: {
-          notSupported: true
-        },
-        alternativeLinks: generateAlternativeLinks(normalizedDomain)
-      };
-      
-      cache.set(normalizedDomain, {
-        data: unsupportedResult,
-        timestamp: Date.now()
-      });
-      
-      return unsupportedResult;
-    }
-    
-    // Check if we have fallback data for common domains
-    if (normalizedDomain in fallbackData) {
-      console.log(`Using fallback data for ${normalizedDomain}`);
-      
-      const fallbackResult: WhoisResult = {
-        domain: normalizedDomain,
-        ...fallbackData[normalizedDomain],
-        error: `查询失败，使用缓存数据: ${error instanceof Error ? error.message : String(error)}`,
-        source: 'fallback-data',
-        rawData: `原始错误: ${error}\n\n使用预设的域名信息作为备用数据。这些信息可能不是最新的，仅供参考。`,
-        tldSupported: isTldSupported,
-        errorDetails: {
-          network: true, // Assume network error since all methods failed
-          cors: String(error).includes('CORS')
-        },
-        alternativeLinks: generateAlternativeLinks(normalizedDomain)
-      };
-      
-      // Store in cache
-      cache.set(normalizedDomain, {
-        data: fallbackResult,
-        timestamp: Date.now()
-      });
-      
-      return fallbackResult;
-    }
-    
-    // 返回一个标准的错误结构
+    // Return a standard error structure
     const errorMsg = `查询失败: ${error instanceof Error ? error.message : String(error)}`;
     
-    return {
+    const errorResult: WhoisResult = {
       domain: normalizedDomain,
       error: errorMsg,
       rawData: String(error),
@@ -177,31 +64,15 @@ export async function lookupDomain(domain: string): Promise<WhoisResult> {
       },
       alternativeLinks: generateAlternativeLinks(normalizedDomain)
     };
+    
+    // Cache error result too to prevent hammering servers
+    cache.set(normalizedDomain, {
+      data: errorResult,
+      timestamp: Date.now()
+    });
+    
+    return errorResult;
   }
-}
-
-/**
- * Generate alternative links for domain lookup
- */
-function generateAlternativeLinks(domain: string): Array<{name: string, url: string}> {
-  return [
-    {
-      name: 'ICANN Lookup',
-      url: `https://lookup.icann.org/en/lookup?q=${domain}&t=a`
-    },
-    {
-      name: 'WhoisXmlApi',
-      url: `https://www.whoisxmlapi.com/whois-lookup-result.php?domain=${domain}`
-    },
-    {
-      name: 'DomainTools',
-      url: `https://whois.domaintools.com/${domain}`
-    },
-    {
-      name: 'Whois.com',
-      url: `https://www.whois.com/whois/${domain}`
-    }
-  ];
 }
 
 /**
@@ -227,11 +98,6 @@ export function isValidDomain(domain: string): boolean {
     return false;
   }
   
-  // Additional check: verify if the TLD is in our supported list
-  const tld = domain.split('.').pop()?.toLowerCase();
-  if (!tld) return false;
-  
-  // We don't check if TLD is supported anymore - we'll use alternative lookup methods
   // Just verify the domain format is valid
   return true;
 }
@@ -262,10 +128,25 @@ export function formatDomainStatus(status: string | string[]): string {
 }
 
 /**
- * Check if a domain is likely to be a popular/well-known domain
- * Used to determine if we should use fallback data
+ * Generate alternative links for domain lookup
  */
-export function isWellKnownDomain(domain: string): boolean {
-  const normalizedDomain = domain.toLowerCase().trim();
-  return normalizedDomain in fallbackData;
+function generateAlternativeLinks(domain: string): Array<{name: string, url: string}> {
+  return [
+    {
+      name: 'ICANN Lookup',
+      url: `https://lookup.icann.org/en/lookup?q=${domain}&t=a`
+    },
+    {
+      name: 'WhoisXmlApi',
+      url: `https://www.whoisxmlapi.com/whois-lookup-result.php?domain=${domain}`
+    },
+    {
+      name: 'DomainTools',
+      url: `https://whois.domaintools.com/${domain}`
+    },
+    {
+      name: 'Whois.com',
+      url: `https://www.whois.com/whois/${domain}`
+    }
+  ];
 }
