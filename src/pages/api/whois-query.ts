@@ -35,6 +35,22 @@ export default async function handler(req: Request, res: Response) {
     
     // Special handling for .cn domains
     if (tld === 'cn') {
+      try {
+        // Try to query CN domains directly
+        const whoisData = await queryWhoisServer(domain, 'whois.cnnic.cn');
+        if (whoisData) {
+          const result = parseWhoisResponse(whoisData, domain);
+          if (!result.error) {
+            return res.status(200).json({
+              ...result,
+              source: 'direct-cn-query'
+            });
+          }
+        }
+      } catch (cnError) {
+        console.error('CN域名查询失败:', cnError);
+      }
+      
       return res.status(200).json({
         domain,
         error: "中国域名管理机构CNNIC有查询限制",
@@ -124,12 +140,19 @@ function queryWhoisServer(domain: string, server: string): Promise<string> {
     });
     
     let data = '';
+    let receivedData = false;
+    
     client.on('data', (chunk) => {
+      receivedData = true;
       data += chunk.toString();
     });
     
     client.on('end', () => {
-      resolve(data);
+      if (receivedData) {
+        resolve(data);
+      } else {
+        reject(new Error('未从服务器接收到数据'));
+      }
     });
     
     client.on('error', (err) => {
@@ -144,15 +167,11 @@ function queryWhoisServer(domain: string, server: string): Promise<string> {
   });
 }
 
-// Query RDAP information via HTTP
+// Query RDAP information via HTTP with improved error handling
 async function queryRDAP(domain: string): Promise<any> {
   const tld = domain.split('.').pop()?.toLowerCase() || "";
-  let rdapUrl = '';
   
-  // Default to RDAP bootstrap service
-  rdapUrl = `https://rdap.org/domain/${encodeURIComponent(domain)}`;
-  
-  // TLD-specific RDAP endpoints
+  // TLD-specific RDAP endpoints - more complete list
   const rdapEndpoints: Record<string, string> = {
     "com": "https://rdap.verisign.com/com/v1/",
     "net": "https://rdap.verisign.com/net/v1/",
@@ -160,9 +179,20 @@ async function queryRDAP(domain: string): Promise<any> {
     "info": "https://rdap.afilias.net/rdap/",
     "io": "https://rdap.nic.io/",
     "app": "https://rdap.nominet.uk/app/",
-    "xyz": "https://rdap.centralnic.com/xyz/"
+    "xyz": "https://rdap.centralnic.com/xyz/",
+    "ai": "https://rdap.nic.ai/",
+    "co": "https://rdap.nic.co/",
+    "me": "https://rdap.nic.me/",
+    "us": "https://rdap.publicinterestregistry.org/rdap/",
+    "eu": "https://rdap.eu/",
+    "ca": "https://rdap.ca/",
+    "uk": "https://rdap.nominet.uk/uk/"
   };
   
+  // Default to RDAP bootstrap service
+  let rdapUrl = `https://rdap.org/domain/${encodeURIComponent(domain)}`;
+  
+  // Use TLD-specific endpoint if available
   if (rdapEndpoints[tld]) {
     rdapUrl = `${rdapEndpoints[tld]}domain/${encodeURIComponent(domain)}`;
   }
@@ -173,7 +203,7 @@ async function queryRDAP(domain: string): Promise<any> {
         'Accept': 'application/json',
         'User-Agent': 'Domain-Info-Tool/1.0'
       },
-      timeout: 5000
+      timeout: 10000 // Increased timeout for slower RDAP services
     }, (response) => {
       let data = '';
       
@@ -193,7 +223,7 @@ async function queryRDAP(domain: string): Promise<any> {
             return;
           }
           
-          reject(new Error(`RDAP请求失败: ${response.statusCode} ${response.statusMessage}`));
+          reject(new Error(`RDAP请求失败: ${response.statusCode} ${response.statusMessage || ''}`));
           return;
         }
         
@@ -223,7 +253,7 @@ async function queryRDAP(domain: string): Promise<any> {
   });
 }
 
-// Parse RDAP response to extract domain information
+// Parse RDAP response to extract domain information - enhanced with more data
 function parseRDAPResponse(data: any, domain: string): any {
   const result: any = {
     domain,
@@ -266,7 +296,7 @@ function parseRDAPResponse(data: any, domain: string): any {
     }
   }
   
-  // Extract dates
+  // Extract dates - improved date handling
   if (data.events) {
     for (const event of data.events) {
       if (event.eventAction === 'registration') {
@@ -287,9 +317,9 @@ function parseRDAPResponse(data: any, domain: string): any {
     result.status = Array.isArray(data.status) ? data.status : [data.status];
   }
   
-  // Extract nameservers
+  // Extract nameservers - improved handling
   if (data.nameservers) {
-    result.nameservers = data.nameservers.map((ns: any) => ns.ldhName || ns);
+    result.nameservers = data.nameservers.map((ns: any) => ns.ldhName || ns.handle || ns);
   }
   
   // Extract DNSSEC information
@@ -300,7 +330,7 @@ function parseRDAPResponse(data: any, domain: string): any {
   return result;
 }
 
-// Parse WHOIS response to extract important information
+// Parse WHOIS response to extract important information - improved with more patterns
 function parseWhoisResponse(response: string, domain: string) {
   // Always include raw data for debugging and display
   const result: any = {
@@ -309,56 +339,76 @@ function parseWhoisResponse(response: string, domain: string) {
     source: 'whois'
   };
 
-  // Define regex patterns for different WHOIS data fields
+  // Define regex patterns for different WHOIS data fields - extended with more patterns
   const patterns: Record<string, RegExp[]> = {
     registrar: [
       /Registrar:\s*(.*?)[\r\n]/i,
       /Sponsoring Registrar:\s*(.*?)[\r\n]/i,
-      /注册商:\s*(.*?)[\r\n]/i
+      /注册商:\s*(.*?)[\r\n]/i,
+      /registrar:\s*(.*?)[\r\n]/i,
+      /Registrar Name:\s*(.*?)[\r\n]/i
     ],
     creationDate: [
       /Creation Date:\s*(.*?)[\r\n]/i, 
       /Created on:\s*(.*?)[\r\n]/i,
       /Registration Date:\s*(.*?)[\r\n]/i,
       /注册时间:\s*(.*?)[\r\n]/i,
-      /Registry Creation Date:\s*(.*?)[\r\n]/i
+      /Registry Creation Date:\s*(.*?)[\r\n]/i,
+      /Created:\s*(.*?)[\r\n]/i,
+      /created:\s*(.*?)[\r\n]/i,
+      /Domain Create Date:\s*(.*?)[\r\n]/i
     ],
     expiryDate: [
       /Expir(?:y|ation) Date:\s*(.*?)[\r\n]/i,
       /Registry Expiry Date:\s*(.*?)[\r\n]/i,
       /Expiration Date:\s*(.*?)[\r\n]/i,
-      /到期时间:\s*(.*?)[\r\n]/i
+      /到期时间:\s*(.*?)[\r\n]/i,
+      /expires:\s*(.*?)[\r\n]/i,
+      /Expires:\s*(.*?)[\r\n]/i,
+      /Domain Expiration Date:\s*(.*?)[\r\n]/i
     ],
     lastUpdated: [
       /Updated Date:\s*(.*?)[\r\n]/i,
       /Last Modified:\s*(.*?)[\r\n]/i,
       /更新时间:\s*(.*?)[\r\n]/i,
-      /Last update:\s*(.*?)[\r\n]/i,
-      /Update Date:\s*(.*?)[\r\n]/i
+      /Last update(?:d)?:\s*(.*?)[\r\n]/i,
+      /Update Date:\s*(.*?)[\r\n]/i,
+      /modified:\s*(.*?)[\r\n]/i,
+      /Changed:\s*(.*?)[\r\n]/i,
+      /Domain Last Updated Date:\s*(.*?)[\r\n]/i
     ],
     status: [
       /Status:\s*(.*?)[\r\n]/i,
       /Domain Status:\s*(.*?)[\r\n]/i,
-      /状态:\s*(.*?)[\r\n]/i
+      /状态:\s*(.*?)[\r\n]/i,
+      /status:\s*(.*?)[\r\n]/ig
     ],
     nameservers: [
       /Name Server:\s*(.*?)[\r\n]/ig,
       /Nameservers?:\s*(.*?)[\r\n]/ig,
       /域名服务器:\s*(.*?)[\r\n]/ig,
-      /nserver:\s*(.*?)[\r\n]/ig
+      /nserver:\s*(.*?)[\r\n]/ig,
+      /name server:\s*(.*?)[\r\n]/ig,
+      /DNS服务器:\s*(.*?)[\r\n]/ig
     ],
     registrant: [
       /Registrant(?:\s+Organization)?:\s*(.*?)[\r\n]/i,
       /注册人:\s*(.*?)[\r\n]/i,
-      /Registrant Name:\s*(.*?)[\r\n]/i
+      /Registrant Name:\s*(.*?)[\r\n]/i,
+      /registrant:\s*(.*?)[\r\n]/i
     ],
     registrantEmail: [
       /Registrant Email:\s*(.*?)[\r\n]/i,
-      /注册人邮箱:\s*(.*?)[\r\n]/i
+      /注册人邮箱:\s*(.*?)[\r\n]/i,
+      /Registrant Contact Email:\s*(.*?)[\r\n]/i
     ],
     registrantPhone: [
       /Registrant Phone(?:\s+Number)?:\s*(.*?)[\r\n]/i,
-      /注册人电话:\s*(.*?)[\r\n]/i
+      /注册人电话:\s*(.*?)[\r\n]/i,
+      /Registrant Contact Phone:\s*(.*?)[\r\n]/i
+    ],
+    dnssec: [
+      /DNSSEC:\s*(.*?)[\r\n]/i
     ]
   };
 
@@ -374,32 +424,38 @@ function parseWhoisResponse(response: string, domain: string) {
       const nameServers: string[] = [];
       for (const pattern of patternsList) {
         let match;
-        // Reset lastIndex to ensure regex works correctly with global flag
-        pattern.lastIndex = 0;
-        while ((match = pattern.exec(response)) !== null) {
+        const regex = new RegExp(pattern.source, 'gi'); // Create a new regex for each iteration
+        while ((match = regex.exec(response)) !== null) {
           if (match[1] && match[1].trim()) {
             nameServers.push(match[1].trim());
           }
         }
       }
-      
       if (nameServers.length > 0) {
         result.nameservers = nameServers;
       }
     } else if (field === 'status') {
       const statuses: string[] = [];
       for (const pattern of patternsList) {
-        const regex = new RegExp(pattern.source, 'gi'); // Create a global version
         let match;
+        const regex = new RegExp(pattern.source, 'gi'); // Global match for multiple statuses
         while ((match = regex.exec(response)) !== null) {
           if (match[1] && match[1].trim()) {
             statuses.push(match[1].trim());
           }
         }
       }
-      
       if (statuses.length > 0) {
         result.status = statuses;
+      }
+    } else if (field === 'dnssec') {
+      for (const pattern of patternsList) {
+        const match = response.match(pattern);
+        if (match && match[1] && match[1].trim()) {
+          const dnssecValue = match[1].trim().toLowerCase();
+          result.dnssec = dnssecValue === 'yes' || dnssecValue === 'true' || dnssecValue === 'signed';
+          break;
+        }
       }
     } else {
       for (const pattern of patternsList) {
@@ -408,6 +464,38 @@ function parseWhoisResponse(response: string, domain: string) {
           result[field] = match[1].trim();
           break;
         }
+      }
+    }
+  }
+
+  // If no data was extracted but we have raw text, try alternative patterns
+  if (!result.registrar && !result.creationDate && !result.nameservers) {
+    // Try to extract any data from key-value patterns like "Key: Value"
+    const keyValuePattern = /^([^:]+):\s*(.+?)$/gm;
+    let match;
+    while ((match = keyValuePattern.exec(response)) !== null) {
+      const key = match[1].trim().toLowerCase();
+      const value = match[2].trim();
+      
+      if (!value) continue;
+      
+      if (key.includes('registrar')) {
+        result.registrar = value;
+      } else if (key.includes('created') || key.includes('registered') || key.includes('creation')) {
+        result.creationDate = value;
+      } else if (key.includes('expir') || key.includes('renewal')) {
+        result.expiryDate = value;
+      } else if (key.includes('updated') || key.includes('modified')) {
+        result.lastUpdated = value;
+      } else if (key.includes('name server') || key.includes('nameserver') || key.includes('nserver')) {
+        if (!result.nameservers) result.nameservers = [];
+        result.nameservers.push(value);
+      } else if (key.includes('status')) {
+        if (!result.status) result.status = [];
+        result.status.push(value);
+      } else if (key.includes('dnssec')) {
+        const dnssecValue = value.toLowerCase();
+        result.dnssec = dnssecValue === 'yes' || dnssecValue === 'true' || dnssecValue === 'signed';
       }
     }
   }

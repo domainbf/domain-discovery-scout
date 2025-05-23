@@ -4,8 +4,9 @@
 import { WhoisResult } from './types/WhoisTypes';
 import { queryWhoisLocally, queryRdapLocally, queryDomainWithBestMethod, isTldSupported } from './whois/localWhoisService';
 import { convertToLegacyFormat } from './whois/whoisParser';
-import { isRdapSupported } from './rdap/rdapEndpoints';
+import { isRdapSupported, getAlternativeRdapEndpoints } from './rdap/rdapEndpoints';
 import { whoisServers, specialTlds } from '@/utils/whois-servers';
+import { queryLocalWhois } from './utils/apiHelper';
 
 // Re-export types for use in other files
 export type { WhoisResult, Contact } from './types/WhoisTypes';
@@ -65,43 +66,107 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
       }
       
       if (tld === "cn") {
-        return {
-          domain: domain,
-          registrar: "中国互联网络信息中心CNNIC",
-          source: "special-handler-cn",
-          status: ["ok"],
-          nameservers: ["请访问官方网站查询..."],
-          error: `中国域名(.cn)查询可能受到限制，请访问官方网站查询: http://whois.cnnic.cn/`,
-          rawData: `中国域名管理机构CNNIC可能对WHOIS查询有限制，建议访问 http://whois.cnnic.cn/ 查询 ${domain} 信息。`,
-          errorDetails: {
-            notSupported: true,
-            serverError: true
-          },
-          alternativeLinks: [{
-            name: '中国域名信息查询中心',
-            url: `http://whois.cnnic.cn/WhoisServlet?domain=${domain}`
-          }]
-        };
+        try {
+          // 尝试直接查询CN域名
+          const cnApiResult = await queryLocalWhois(domain);
+          if (!cnApiResult.error) {
+            return {
+              ...cnApiResult,
+              source: "direct-cn-query"
+            };
+          }
+          
+          // 如果直接查询失败，返回带有官方链接的结果
+          return {
+            domain: domain,
+            registrar: "中国互联网络信息中心CNNIC",
+            source: "special-handler-cn",
+            status: ["ok"],
+            nameservers: ["请访问官方网站查询..."],
+            error: `中国域名(.cn)查询可能受到限制，请访问官方网站查询: http://whois.cnnic.cn/`,
+            rawData: `中国域名管理机构CNNIC可能对WHOIS查询有限制，建议访问 http://whois.cnnic.cn/ 查询 ${domain} 信息。`,
+            errorDetails: {
+              notSupported: true,
+              serverError: true
+            },
+            alternativeLinks: [{
+              name: '中国域名信息查询中心',
+              url: `http://whois.cnnic.cn/WhoisServlet?domain=${domain}`
+            }]
+          };
+        } catch (error) {
+          console.error("CN域名查询失败:", error);
+          return {
+            domain: domain,
+            registrar: "中国互联网络信息中心CNNIC",
+            source: "special-handler-cn",
+            status: ["ok"],
+            nameservers: ["请访问官方网站查询..."],
+            error: `中国域名(.cn)查询可能受到限制，请访问官方网站查询: http://whois.cnnic.cn/`,
+            rawData: `中国域名管理机构CNNIC可能对WHOIS查询有限制，建议访问 http://whois.cnnic.cn/ 查询 ${domain} 信息。`,
+            errorDetails: {
+              notSupported: true,
+              serverError: true
+            },
+            alternativeLinks: [{
+              name: '中国域名信息查询中心',
+              url: `http://whois.cnnic.cn/WhoisServlet?domain=${domain}`
+            }]
+          };
+        }
       }
     }
 
-    // Use the best available query method based on domain
-    try {
-      console.log(`Using best available query method for ${domain}`);
-      const result = await queryDomainWithBestMethod(domain);
-      
-      if (!result.error) {
-        console.log(`Successfully retrieved information for ${domain}`);
-        return result;
+    // Try RDAP first for supported TLDs (more structured data)
+    if (supportedRdap) {
+      try {
+        console.log(`Trying RDAP for ${domain}...`);
+        const rdapResult = await queryRdapLocally(domain);
+        if (!rdapResult.error) {
+          console.log(`RDAP query successful for ${domain}`);
+          return rdapResult;
+        }
+        console.warn(`RDAP query failed: ${rdapResult.error}`);
+      } catch (error) {
+        console.warn(`RDAP error: ${error instanceof Error ? error.message : String(error)}`);
       }
-      
-      console.warn(`Best method query failed: ${result.error}`);
-      // Return the error result but continue trying other methods
-      return result;
-    } catch (error) {
-      console.warn(`Best method error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // Try WHOIS next
+    if (supportedWhois) {
+      try {
+        console.log(`Trying WHOIS for ${domain}...`);
+        const whoisResult = await queryWhoisLocally(domain);
+        if (!whoisResult.error) {
+          console.log(`WHOIS query successful for ${domain}`);
+          return whoisResult;
+        }
+        console.warn(`WHOIS query failed: ${whoisResult.error}`);
+        
+        // Even if there's an error, if we got some data, return it
+        if (whoisResult.rawData && 
+            (whoisResult.registrar || whoisResult.created || whoisResult.nameservers)) {
+          console.log(`Returning partial WHOIS data for ${domain}`);
+          return whoisResult;
+        }
+      } catch (error) {
+        console.warn(`WHOIS error: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
     
+    // Last resort: Try direct API integration
+    try {
+      console.log(`Trying direct API for ${domain}...`);
+      const directResult = await queryLocalWhois(domain, 'whois');
+      if (!directResult.error || 
+          (directResult.rawData && directResult.rawData.length > 50)) {
+        console.log(`Direct API query returned data for ${domain}`);
+        return directResult;
+      }
+    } catch (error) {
+      console.warn(`Direct API error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
     // If no support for both WHOIS and RDAP, return a clear error
     if (!supportedWhois && !supportedRdap) {
       return {
@@ -122,7 +187,7 @@ export async function queryWhois(domain: string): Promise<WhoisResult> {
     
     return {
       domain,
-      error: `所有查询方法均失败，无法获取域名数据`,
+      error: `无法通过任何渠道获取域名数据`,
       source: "all-methods-failed",
       status: ["error"],
       rawData: `尝试了所有可用查询方法，但均无法获取 ${domain} 的有效注册数据。`,

@@ -28,7 +28,7 @@ export const safeParseResponse = async (response: Response): Promise<any> => {
 };
 
 // Make a fetch request with proper error handling
-export const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> => {
+export const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -64,11 +64,18 @@ export const queryLocalWhois = async (domain: string, type: string = 'whois'): P
     
     const response = await fetchWithTimeout(
       `/api/whois-query?domain=${encodeURIComponent(domain)}&type=${type}`,
-      { method: 'GET' }
+      { 
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      }
     );
     
     if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`API请求失败: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
     }
     
     return await safeParseResponse(response);
@@ -85,12 +92,14 @@ export const queryDomainInfoProxy = async (domain: string): Promise<any> => {
     
     const response = await fetchWithTimeout(`/api/domain-info?domain=${encodeURIComponent(domain)}&format=json`, {
       headers: {
+        'Accept': 'application/json',
         'Content-Type': 'application/json'
       }
     });
     
     if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`API请求失败: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
     }
     
     return await safeParseResponse(response);
